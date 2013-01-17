@@ -214,7 +214,7 @@ extract_string(unsigned char *x, int *valid_termination, int len)
     memset(ret, 0, sizeof(ret));
 
     for (i = 0; i < len; i++) {
-	if (isalnum(x[i])) {
+	if (isgraph(x[i])) {
 	    ret[i] = x[i];
 	} else if (!seen_newline) {
 	    if (x[i] == 0x0a) {
