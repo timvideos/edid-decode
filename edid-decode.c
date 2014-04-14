@@ -618,7 +618,7 @@ cea_audio_block(unsigned char *x)
     for (i = 1; i < length; i += 3) {
 	format = (x[i] & 0x78) >> 3;
 	printf("    %s, max channels %d\n", audio_format(format),
-	       x[i] & 0x07);
+	       (x[i] & 0x07)+1);
 	printf("    Supported sample rates (kHz):%s%s%s%s%s%s%s\n",
 	       (x[i+1] & 0x40) ? " 192" : "",
 	       (x[i+1] & 0x20) ? " 176.4" : "",
@@ -1569,9 +1569,9 @@ int main(int argc, char **argv)
 	}
     } else {
 	printf("Supported color formats: RGB 4:4:4");
-	if (edid[0x18] & 0x10)
-	    printf(", YCrCb 4:4:4");
 	if (edid[0x18] & 0x08)
+	    printf(", YCrCb 4:4:4");
+	if (edid[0x18] & 0x10)
 	    printf(", YCrCb 4:2:2");
 	printf("\n");
     }
