@@ -629,11 +629,11 @@ cea_audio_block(unsigned char *x)
 	       (x[i+1] & 0x01) ? " 32" : "");
 	if (format == 1) {
 	    printf("    Supported sample sizes (bits):%s%s%s\n",
-		  (x[2] & 0x04) ? " 24" : "",
-		  (x[2] & 0x02) ? " 20" : "",
-		  (x[2] & 0x01) ? " 16" : "");
+		  (x[i+2] & 0x04) ? " 24" : "",
+		  (x[i+2] & 0x02) ? " 20" : "",
+		  (x[i+2] & 0x01) ? " 16" : "");
 	} else if (format <= 8) {
-	    printf("    Maximum bit rate: %d kHz\n", x[2] * 8);
+	    printf("    Maximum bit rate: %d kHz\n", x[i+2] * 8);
 	}
     }
 }
