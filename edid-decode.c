@@ -1072,6 +1072,176 @@ parse_cea(unsigned char *x)
     return ret;
 }
 
+static int
+parse_displayid_detailed_timing(unsigned char *x)
+{
+    int ha, hbl, hso, hspw;
+    int va, vbl, vso, vspw;
+    char phsync, pvsync, *stereo;
+    int pix_clock;
+    char *aspect;
+
+    switch (x[3] & 0xf) {
+    case 0:
+	aspect = "1:1";
+	break;
+    case 1:
+	aspect = "5:4";
+	break;
+    case 2:
+	aspect = "4:3";
+	break;
+    case 3:
+	aspect = "15:9";
+	break;
+    case 4:
+	aspect = "16:9";
+	break;
+    case 5:
+	aspect = "16:10";
+	break;
+    case 6:
+	aspect = "64:27";
+	break;
+    case 7:
+	aspect = "256:135";
+	break;
+    default:
+	aspect = "undefined";
+	break;
+    }
+    switch ((x[3] >> 5) & 0x3) {
+    case 0:
+	stereo = "";
+	break;
+    case 1:
+	stereo = "stereo";
+	break;
+    case 2:
+	stereo = "user action";
+	break;
+    case 3:
+	stereo = "reserved";
+	break;
+    }
+    printf("Type 1 detailed timing: aspect: %s, %s %s\n", aspect, x[3] & 0x80 ? "Preferred " : "", stereo);
+    pix_clock = x[0] + (x[1] << 8) + (x[2] << 16);
+    ha = x[4] | (x[5] << 8);
+    hbl = x[6] | (x[7] << 8);
+    hso = x[8] | ((x[9] & 0x7f) << 8);
+    phsync = ((x[9] >> 7) & 0x1) ? '+' : '-';
+    hspw = x[10] | (x[11] << 8);
+    va = x[12] | (x[13] << 8);
+    vbl = x[14] | (x[15] << 8);
+    vso = x[16] | ((x[17] & 0x7f) << 8);
+    vspw = x[18] | (x[19] << 8);
+    pvsync = ((x[17] >> 7) & 0x1 ) ? '+' : '-';
+
+    printf("Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
+	   "               %4d %4d %4d %4d\n"
+	   "               %4d %4d %4d %4d\n"
+	   "               %chsync %cvsync\n",
+	   (float)pix_clock/100.0, 0, 0,
+	   ha, ha + hso, ha + hso + hspw, ha + hbl,
+	   va, va + vso, va + vso + vspw, va + vbl,
+	   phsync, pvsync
+	   );
+    return 1;
+}
+
+static int
+parse_displayid(unsigned char *x)
+{
+    int version = x[1];
+    int length = x[2];
+    int ext_count = x[4];
+    int i;
+    printf("Length %d, version %d, extension count %d\n", length, version, ext_count);
+    int offset = 5;
+    while (length > 0) {
+       int tag = x[offset];
+       int len = x[offset + 2];
+
+       if (len == 0)
+	   break;
+       switch (tag) {
+       case 0:
+	   printf("Product ID block\n");
+	   break;
+       case 1:
+	   printf("Display Parameters block\n");
+	   break;
+       case 2:
+	   printf("Color characteristics block\n");
+	   break;
+       case 3: {
+	   for (i = 0; i < len / 20; i++) {
+	       parse_displayid_detailed_timing(&x[offset + 3 + (i * 20)]);
+	   }
+	   break;
+       }
+       case 4:
+	   printf("Type 2 detailed timing\n");
+	   break;
+       case 5:
+	   printf("Type 3 short timing\n");
+	   break;
+       case 6:
+	   printf("Type 4 DMT timing\n");
+	   break;
+       case 7:
+	   printf("VESA DMT timing block\n");
+	   break;
+       case 8:
+	   printf("CEA timing block\n");
+	   break;
+       case 9:
+	   printf("Video timing range\n");
+	   break;
+       case 0xa:
+	   printf("Product serial number\n");
+	   break;
+       case 0xb:
+	   printf("GP ASCII string\n");
+	   break;
+       case 0xc:
+	   printf("Display device data\n");
+	   break;
+       case 0xd:
+	   printf("Interface power sequencing\n");
+	   break;
+       case 0xe:
+	   printf("Transfer characterisitics\n");
+	   break;
+       case 0xf:
+	   printf("Display interface\n");
+	   break;
+       case 0x10:
+	   printf("Stereo display interface\n");
+	   break;
+       case 0x12: {
+	   int capabilities = x[offset + 3];
+	   int num_v_tile = (x[offset + 4] & 0xf) | (x[offset + 6] & 0x30);
+	   int num_h_tile = (x[offset + 4] >> 4) | ((x[offset + 6] >> 2) & 0x30);
+	   int tile_v_location = (x[offset + 5] & 0xf) | ((x[offset + 6] & 0x3) << 4);
+	   int tile_h_location = (x[offset + 5] >> 4) | (((x[offset + 6] >> 2) & 0x3) << 4);
+	   int tile_width = x[offset + 7] | (x[offset + 8] << 8);
+	   int tile_height = x[offset + 9] | (x[offset + 10] << 8);
+	   printf("tiled display block: capabilities 0x%08x\n", capabilities);
+	   printf("num horizontal tiles %d, num vertical tiles %d\n", num_h_tile + 1, num_v_tile + 1);
+	   printf("tile location (%d, %d)\n", tile_h_location, tile_v_location);
+	   printf("tile dimensions (%d, %d)\n", tile_width + 1, tile_height + 1);
+	   break;
+       }
+       default:
+	   printf("Unknown displayid data block 0x%x\n", tag);
+	   break;
+       }
+       length -= len + 3;
+       offset += len + 3;
+    }
+    return 1;
+}
 /* generic extension code */
 
 static void
@@ -1096,6 +1266,10 @@ parse_extension(unsigned char *x)
     case 0x40: printf("DI extension block\n"); break;
     case 0x50: printf("LS extension block\n"); break;
     case 0x60: printf("DPVL extension block\n"); break;
+    case 0x70: printf("DisplayID extension block\n");
+	extension_version(x);
+        parse_displayid(x);
+        break;
     case 0xF0: printf("Block map\n"); break;
     case 0xFF: printf("Manufacturer-specific extension block\n");
     default:
