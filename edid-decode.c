@@ -1037,6 +1037,31 @@ cea_vcdb(unsigned char *x)
     decode(vcdb_fields, d, "    ");
 }
 
+static const char *colorimetry_map[] = {
+    "xvYCC601",
+    "xvYCC709",
+    "sYCC601",
+    "AdobeYCC601",
+    "AdobeRGB",
+    "BT2020cYCC",
+    "BT2020YCC",
+    "BT2020RGB",
+};
+
+static void
+cea_colorimetry_block(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int i;
+
+    if (length >= 3) {
+	for (i = 0; i < ARRAY_SIZE(colorimetry_map); i++) {
+	    if (x[2] >> i)
+		printf("    %s\n", colorimetry_map[i]);
+	}
+    }
+}
+
 static void
 cea_block(unsigned char *x)
 {
@@ -1088,6 +1113,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x05:
 		    printf("Colorimetry data block\n");
+		    cea_colorimetry_block(x);
 		    break;
 		case 0x10:
 		    printf("CEA miscellaneous audio fields\n");
