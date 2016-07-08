@@ -787,6 +787,14 @@ cea_video_block(unsigned char *x)
     cea_svd(x + 1, length);
 }
 
+static void
+cea_y420vdb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+
+    cea_svd(x + 2, length - 1);
+}
+
 static const char *edid_cea_hdmi_modes[] = {
     "3840x2160@30Hz",
     "3840x2160@25Hz",
@@ -1123,6 +1131,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x0e:
 		    printf("YCbCr 4:2:0 video data block\n");
+		    cea_y420vdb(x);
 		    break;
 		case 0x0f:
 		    printf("YCbCr 4:2:0 capability map data block\n");
