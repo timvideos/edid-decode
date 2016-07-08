@@ -1563,6 +1563,7 @@ int main(int argc, char **argv)
 		perror(argv[1]);
 		return 1;
 	    }
+	    ofd = -1;
 	    break;
 	case 3:
 	    if ((fd = open(argv[1], O_RDONLY)) == -1) {
