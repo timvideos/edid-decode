@@ -995,6 +995,40 @@ static struct field *vcdb_fields[] = {
     &CE_scan,
 };
 
+static const char *sadb_map[] = {
+    "FL/FR",
+    "LFE",
+    "FC",
+    "RL/RR",
+    "RC",
+    "FLC/FRC",
+    "RLC/RRC",
+    "FLW/FRW",
+    "FLH/FRH",
+    "TC",
+    "FCH",
+};
+
+static void
+cea_sadb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int i;
+
+    if (length >= 3) {
+	uint16_t sad = ((x[2] << 8) | x[1]);
+
+	printf("    Speaker map:");
+
+	for (i = 0; i < ARRAY_SIZE(sadb_map); i++) {
+	    if ((sad >> i) & 1)
+		printf(" %s", sadb_map[i]);
+	}
+
+	printf("\n");
+    }
+}
+
 static void
 cea_vcdb(unsigned char *x)
 {
@@ -1028,6 +1062,7 @@ cea_block(unsigned char *x)
 	    break;
 	case 0x04:
 	    printf("  Speaker allocation data block\n");
+	    cea_sadb(x);
 	    break;
 	case 0x05:
 	    printf("  VESA DTC data block\n");
