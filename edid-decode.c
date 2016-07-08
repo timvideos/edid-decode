@@ -703,28 +703,88 @@ static const char *edid_cea_modes[] = {
     "1280x720@30Hz",
     "1920x1080@120Hz",
     "1920x1080@100Hz",
+    "1280x720@24Hz",
+    "1280x720@25Hz",
+    "1280x720@30Hz",
+    "1280x720@50Hz",
+    "1280x720@60Hz",
+    "1280x720@100Hz",
+    "1280x720@120Hz",
+    "1920x1080@24Hz",
+    "1920x1080@25Hz",
+    "1920x1080@30Hz",
+    "1920x1080@50Hz",
+    "1920x1080@60Hz",
+    "1920x1080@100Hz",
+    "1920x1080@120Hz",
+    "1680x720@24Hz",
+    "1680x720@25Hz",
+    "1680x720@30Hz",
+    "1680x720@50Hz",
+    "1680x720@60Hz",
+    "1680x720@100Hz",
+    "1680x720@120Hz",
+    "2560x1080@24Hz",
+    "2560x1080@25Hz",
+    "2560x1080@30Hz",
+    "2560x1080@50Hz",
+    "2560x1080@60Hz",
+    "2560x1080@100Hz",
+    "2560x1080@120Hz",
+    "3840x2160@24Hz",
+    "3840x2160@25Hz",
+    "3840x2160@30Hz",
+    "3840x2160@50Hz",
+    "3840x2160@60Hz",
+    "4096x2160@24Hz",
+    "4096x2160@25Hz",
+    "4096x2160@30Hz",
+    "4096x2160@50Hz",
+    "4096x2160@60Hz",
+    "3840x2160@24Hz",
+    "3840x2160@25Hz",
+    "3840x2160@30Hz",
+    "3840x2160@50Hz",
+    "3840x2160@60Hz",
 };
+
+static void
+cea_svd(unsigned char *x, int n)
+{
+    int i;
+
+    for (i = 0; i < n; i++)  {
+	unsigned char svd = x[i];
+	unsigned char native;
+	unsigned char vic;
+	const char *mode;
+
+	if ((svd & 0x7f) == 0)
+	    continue;
+
+	if ((svd - 1) & 0x40) {
+	    vic = svd;
+	    native = 0;
+	} else {
+	    vic = svd & 0x7f;
+	    native = svd & 0x80;
+	}
+
+	if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes))
+	    mode = edid_cea_modes[vic - 1];
+	else
+	    mode = "Unknown mode";
+
+	printf("    VIC %3d %s %s\n", vic, mode, native ? "(native)" : "");
+    }
+}
 
 static void
 cea_video_block(unsigned char *x)
 {
-    int i;
     int length = x[0] & 0x1f;
 
-    for (i = 1; i <= length; i++)  {
-	unsigned char vic = x[i] & 0x7f;
-	unsigned char native = x[i] & 0x80;
-	const char *mode;
-	int index;
-
-	index = vic - 1;
-	if (index < ARRAY_SIZE(edid_cea_modes))
-	    mode = edid_cea_modes[index];
-	else
-	    mode = "Unknown mode";
-
-	printf("    VIC %02d %s %s\n", vic, mode, native ? "(native)" : "");
-    }
+    cea_svd(x + 1, length);
 }
 
 static const char *edid_cea_hdmi_modes[] = {
