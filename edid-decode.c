@@ -1100,6 +1100,43 @@ cea_colorimetry_block(unsigned char *x)
     }
 }
 
+static const char *eotf_map[] = {
+    "Traditional gamma - SDR luminance range",
+    "Traditional gamma - HDR luminance range",
+    "SMPTE ST2084",
+};
+
+static void
+cea_hdr_metadata_block(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int i;
+
+    if (length >= 3) {
+	printf("    Electro optical transfer functions:\n");
+	for (i = 0; i < 6; i++) {
+	    if (x[2] >> i) {
+		printf("      %s\n", i < ARRAY_SIZE(eotf_map) ?
+		       eotf_map[i] : "Unknown");
+	    }
+	}
+	printf("    Supported static metadata descriptors:\n");
+	for (i = 0; i < 8; i++) {
+	    if (x[3] >> i)
+		printf("      Static metadata type %d\n", i + 1);
+	}
+    }
+
+    if (length >= 4)
+	printf("    Desired content max luminance: %d\n", x[4]);
+
+    if (length >= 5)
+	printf("    Desired content max frame-average luminance: %d\n", x[5]);
+
+    if (length >= 6)
+	printf("    Desired content min luminance: %d\n", x[6]);
+}
+
 static void
 cea_block(unsigned char *x)
 {
@@ -1155,6 +1192,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x06:
 		    printf("HDR static metadata data block\n");
+		    cea_hdr_metadata_block(x);
 		    break;
 		case 0x0d:
 		    printf("Video format preference data block\n");
