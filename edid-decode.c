@@ -795,6 +795,36 @@ cea_y420vdb(unsigned char *x)
     cea_svd(x + 2, length - 1);
 }
 
+static void
+cea_vfpdb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int i;
+
+    for (i = 2; i <= length; i++)  {
+	unsigned char svr = x[i];
+
+	if ((svr > 0 && svr < 128) || (svr > 192 && svr < 254)) {
+	    unsigned char vic;
+	    const char *mode;
+	    int index;
+
+	    vic = svr;
+	    index = vic - 1;
+
+	    if (index < ARRAY_SIZE(edid_cea_modes))
+		mode = edid_cea_modes[vic];
+	    else
+		mode = "Unknown mode";
+
+	    printf("    VIC %02d %s\n", vic, mode);
+
+	} else if (svr > 128 && svr < 145) {
+	    printf("    DTD number %02d\n", svr - 128);
+	}
+    }
+}
+
 static const char *edid_cea_hdmi_modes[] = {
     "3840x2160@30Hz",
     "3840x2160@25Hz",
@@ -1128,6 +1158,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x0d:
 		    printf("Video format preference data block\n");
+		    cea_vfpdb(x);
 		    break;
 		case 0x0e:
 		    printf("YCbCr 4:2:0 video data block\n");
