@@ -1115,6 +1115,18 @@ cea_block(unsigned char *x)
 		    printf("Colorimetry data block\n");
 		    cea_colorimetry_block(x);
 		    break;
+		case 0x06:
+		    printf("HDR static metadata data block\n");
+		    break;
+		case 0x0d:
+		    printf("Video format preference data block\n");
+		    break;
+		case 0x0e:
+		    printf("YCbCr 4:2:0 video data block\n");
+		    break;
+		case 0x0f:
+		    printf("YCbCr 4:2:0 capability map data block\n");
+		    break;
 		case 0x10:
 		    printf("CEA miscellaneous audio fields\n");
 		    break;
@@ -1124,8 +1136,11 @@ cea_block(unsigned char *x)
 		case 0x12:
 		    printf("HDMI audio data block\n");
 		    break;
+		case 0x20:
+		    printf("InfoFrame data block\n");
+		    break;
 		default:
-		    if (x[1] >= 6 && x[1] <= 15)
+		    if (x[1] >= 6 && x[1] <= 12)
 			printf("Reserved video block (%02x)\n", x[1]);
 		    else if (x[1] >= 19 && x[1] <= 31)
 			printf("Reserved audio block (%02x)\n", x[1]);
