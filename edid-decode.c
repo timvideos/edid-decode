@@ -50,6 +50,8 @@ static int name_descriptor_terminated = 0;
 static int has_range_descriptor = 0;
 static int has_preferred_timing = 0;
 static int has_valid_checksum = 1;
+static int has_valid_cea_checksum = 1;
+static int has_valid_displayid_checksum = 1;
 static int has_valid_cvt = 1;
 static int has_valid_dummy_block = 1;
 static int has_valid_week = 0;
@@ -1291,7 +1293,7 @@ parse_cea(unsigned char *x)
 		detailed_block(detailed, 1);
     } while (0);
 
-    do_checksum(x, EDID_PAGE_SIZE);
+    has_valid_cea_checksum = do_checksum(x, EDID_PAGE_SIZE);
 
     return ret;
 }
@@ -1382,7 +1384,11 @@ parse_displayid(unsigned char *x)
     int i;
     printf("Length %d, version %d, extension count %d\n", length, version, ext_count);
 
-    do_checksum(x+1, length + 5);
+    /* DisplayID length field is number of following bytes
+     * but checksum is calculated over the entire structure
+     * (excluding DisplayID-in-EDID magic byte)
+     */
+    has_valid_displayid_checksum = do_checksum(x+1, length + 5);
 
     int offset = 5;
     while (length > 0) {
@@ -2050,7 +2056,7 @@ int main(int argc, char **argv)
 	has_valid_extension_count = 1;
     }
 
-    do_checksum(edid, EDID_PAGE_SIZE);
+    has_valid_checksum = do_checksum(edid, EDID_PAGE_SIZE);
 
     x = edid;
     for (edid_lines /= 8; edid_lines > 1; edid_lines--) {
@@ -2142,6 +2148,15 @@ int main(int argc, char **argv)
 	    printf("\tRange descriptor contains garbage\n");
 	if (!has_valid_max_dotclock)
 	    printf("\tEDID 1.4 block does not set max dotclock\n");
+    }
+
+    if (!has_valid_cea_checksum) {
+        printf("CEA extension block does not conform\n");
+        printf("\tBlock has broken checksum\n");
+    }
+    if (!has_valid_displayid_checksum) {
+        printf("DisplayID extension block does not conform\n");
+        printf("\tBlock has broken checksum\n");
     }
 
     if (warning_excessive_dotclock_correction)
