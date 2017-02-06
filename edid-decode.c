@@ -34,6 +34,10 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 
+enum {
+    EDID_PAGE_SIZE = 128u
+};
+
 static int claims_one_point_oh = 0;
 static int claims_one_point_two = 0;
 static int claims_one_point_three = 0;
@@ -208,7 +212,7 @@ detailed_cvt_descriptor(unsigned char *x, int first)
 static char *
 extract_string(unsigned char *x, int *valid_termination, int len)
 {
-    static char ret[128];
+    static char ret[EDID_PAGE_SIZE];
     int i, seen_newline = 0;
 
     memset(ret, 0, sizeof(ret));
@@ -562,21 +566,25 @@ detailed_block(unsigned char *x, int in_extension)
     return 1;
 }
 
-static void
-do_checksum(unsigned char *x)
+static int
+do_checksum(unsigned char *x, size_t len)
 {
-    printf("Checksum: 0x%hx", x[0x7f]);
-    {
-	unsigned char sum = 0;
-	int i;
-	for (i = 0; i < 128; i++)
-	    sum += x[i];
-	if (sum) {
-	    printf(" (should be 0x%hx)", (unsigned char)(x[0x7f] - sum));
-	    has_valid_checksum = 0;
-	} else printf(" (valid)");
+    unsigned char check = x[len - 1];
+    unsigned char sum = 0;
+    int i;
+
+    printf("Checksum: 0x%hx", check);
+
+    for (i = 0; i < len-1; i++)
+        sum += x[i];
+
+    if ((unsigned char)(check + sum) != 0) {
+        printf(" (should be 0x%hx)\n", -sum & 0xff);
+        return 0;
     }
-    printf("\n");
+
+    printf(" (valid)\n");
+    return 1;
 }
 
 /* CEA extension */
@@ -1283,7 +1291,7 @@ parse_cea(unsigned char *x)
 		detailed_block(detailed, 1);
     } while (0);
 
-    do_checksum(x);
+    do_checksum(x, EDID_PAGE_SIZE);
 
     return ret;
 }
@@ -1373,6 +1381,9 @@ parse_displayid(unsigned char *x)
     int ext_count = x[4];
     int i;
     printf("Length %d, version %d, extension count %d\n", length, version, ext_count);
+
+    do_checksum(x+1, length + 5);
+
     int offset = 5;
     while (length > 0) {
        int tag = x[offset];
@@ -2039,11 +2050,11 @@ int main(int argc, char **argv)
 	has_valid_extension_count = 1;
     }
 
-    do_checksum(edid);
+    do_checksum(edid, EDID_PAGE_SIZE);
 
     x = edid;
     for (edid_lines /= 8; edid_lines > 1; edid_lines--) {
-	x += 128;
+	x += EDID_PAGE_SIZE;
 	nonconformant_extension += parse_extension(x);
     }
 
