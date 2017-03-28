@@ -219,6 +219,8 @@ extract_string(unsigned char *x, int *valid_termination, int len)
 	} else if (!seen_newline) {
 	    if (x[i] == 0x0a) {
 		seen_newline = 1;
+            } else if (x[i] == 0x20) {
+                ret[i] = x[i];
 	    } else {
 		*valid_termination = 0;
 		return ret;
