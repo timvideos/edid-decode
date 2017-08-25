@@ -57,7 +57,6 @@ static int has_valid_dummy_block = 1;
 static int has_valid_week = 0;
 static int has_valid_year = 0;
 static int has_valid_detailed_blocks = 0;
-static int has_valid_extension_count = 0;
 static int has_valid_descriptor_ordering = 1;
 static int has_valid_descriptor_pad = 1;
 static int has_valid_range_descriptor = 1;
@@ -2046,15 +2045,8 @@ int main(int argc, char **argv)
     has_valid_detailed_blocks &= detailed_block(edid + 0x5A, 0);
     has_valid_detailed_blocks &= detailed_block(edid + 0x6C, 0);
 
-    /* check this, 1.4 verification guide says otherwise */
-    if (edid[0x7e]) {
+    if (edid[0x7e])
 	printf("Has %d extension blocks\n", edid[0x7e]);
-	/* 2 is impossible because of the block map */
-	if (edid[0x7e] != 2)
-	    has_valid_extension_count = 1;
-    } else {
-	has_valid_extension_count = 1;
-    }
 
     has_valid_checksum = do_checksum(edid, EDID_PAGE_SIZE);
 
@@ -2117,7 +2109,6 @@ int main(int argc, char **argv)
 	!has_valid_week ||
 	!has_valid_detailed_blocks ||
 	!has_valid_dummy_block ||
-	!has_valid_extension_count ||
 	!has_valid_descriptor_ordering ||
 	!has_valid_range_descriptor ||
 	!manufacturer_name_well_formed) {
@@ -2138,8 +2129,6 @@ int main(int argc, char **argv)
 	    printf("\tDetailed blocks filled with garbage\n");
 	if (!has_valid_dummy_block)
 	    printf("\tDummy block filled with garbage\n");
-	if (!has_valid_extension_count)
-	    printf("\tImpossible extension block count\n");
 	if (!manufacturer_name_well_formed)
 	    printf("\tManufacturer name field contains garbage\n");
 	if (!has_valid_descriptor_ordering)
