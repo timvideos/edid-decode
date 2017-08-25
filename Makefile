@@ -1,14 +1,11 @@
-# ZSH OR DIE, PUNKS
-
 bindir ?= /usr/bin
 mandir ?= /usr/share/man
 
 edid-decode: edid-decode.c
-	$(CC) -g -Wall -o $@ $<
+	$(CC) $(CFLAGS) -g -Wall -o $@ $<
 
 clean:
 	rm -f edid-decode
-	-echo rm -f edid-decode **/*.jx | zsh -s
 
 install:
 	mkdir -p $(DESTDIR)$(bindir)
