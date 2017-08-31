@@ -1091,6 +1091,22 @@ cea_y420vdb(unsigned char *x)
 }
 
 static void
+cea_y420cmdb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int i;
+
+    for (i = 0; i < length - 1; i++) {
+	uint8_t v = x[2 + i];
+	int j;
+
+	for (j = 0; j < 8; j++)
+		if (v & (1 << j))
+			printf("    VSD Index %d\n", i * 8 + j);
+    }
+}
+
+static void
 cea_vfpdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
@@ -1544,6 +1560,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x0f:
 		    printf("YCbCr 4:2:0 capability map data block\n");
+		    cea_y420cmdb(x);
 		    break;
 		case 0x10:
 		    printf("CEA miscellaneous audio fields\n");
