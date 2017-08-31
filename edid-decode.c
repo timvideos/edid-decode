@@ -366,8 +366,14 @@ detailed_block(unsigned char *x, int in_extension)
 	    return valid_cvt;
 	}
 	case 0xF9:
-	    /* TODO */
-	    printf("Color management data\n");
+	    printf("Color management data:\n");
+	    printf("  Version:  %d\n", x[5]);
+	    printf("  Red a3:   %.2f\n", (short)(x[6] | (x[7] << 8)) / 100.0);
+	    printf("  Red a2:   %.2f\n", (short)(x[8] | (x[9] << 8)) / 100.0);
+	    printf("  Green a3: %.2f\n", (short)(x[10] | (x[11] << 8)) / 100.0);
+	    printf("  Green a2: %.2f\n", (short)(x[12] | (x[13] << 8)) / 100.0);
+	    printf("  Blue a3:  %.2f\n", (short)(x[14] | (x[15] << 8)) / 100.0);
+	    printf("  Blue a2:  %.2f\n", (short)(x[16] | (x[17] << 8)) / 100.0);
 	    return 1;
 	case 0xFA:
 	    printf("More standard timings:\n");
