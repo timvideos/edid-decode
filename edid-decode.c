@@ -90,6 +90,8 @@ static int mon_max_hor_freq_hz = 0;
 static int mon_min_vert_freq_hz = 0;
 static int mon_max_vert_freq_hz = 0;
 static int mon_max_pixclk_khz = 0;
+static unsigned supported_hdmi_vic_codes = 0;
+static unsigned supported_hdmi_vic_vsb_codes = 0;
 
 static int conformant = 1;
 
@@ -1059,6 +1061,20 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 	}
 
 	if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes)) {
+	    switch (vic) {
+	    case 95:
+		    supported_hdmi_vic_vsb_codes |= 1 << 0;
+		    break;
+	    case 94:
+		    supported_hdmi_vic_vsb_codes |= 1 << 1;
+		    break;
+	    case 93:
+		    supported_hdmi_vic_vsb_codes |= 1 << 2;
+		    break;
+	    case 98:
+		    supported_hdmi_vic_vsb_codes |= 1 << 3;
+		    break;
+	    }
 	    mode = edid_cea_modes[vic - 1].name;
 	    min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
 	    max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
@@ -1141,7 +1157,7 @@ cea_vfpdb(unsigned char *x)
 static struct {
     const char *name;
     int refresh, hor_freq_hz, pixclk_khz;
-} edid_cea_hdmi_modes[] = {
+} edid_hdmi_modes[] = {
     {"3840x2160@30Hz 16:9", 30, 67500, 297000},
     {"3840x2160@25Hz 16:9", 25, 56250, 297000},
     {"3840x2160@24Hz 16:9", 24, 54000, 297000},
@@ -1233,14 +1249,14 @@ cea_hdmi_block(unsigned char *x)
                     unsigned char vic = x[9 + b + i];
                     const char *mode;
 
-                    vic--;
-                    if (vic < ARRAY_SIZE(edid_cea_hdmi_modes)) {
-			mode = edid_cea_hdmi_modes[vic].name;
-			min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_hdmi_modes[vic].refresh);
-			max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_hdmi_modes[vic].refresh);
-			min_hor_freq_hz = min(min_hor_freq_hz, edid_cea_hdmi_modes[vic].hor_freq_hz);
-			max_hor_freq_hz = max(max_hor_freq_hz, edid_cea_hdmi_modes[vic].hor_freq_hz);
-			max_pixclk_khz = max(max_pixclk_khz, edid_cea_hdmi_modes[vic].pixclk_khz);
+                    if (vic && vic <= ARRAY_SIZE(edid_hdmi_modes)) {
+			supported_hdmi_vic_codes |= 1 << (vic - 1);
+			mode = edid_hdmi_modes[vic - 1].name;
+			min_vert_freq_hz = min(min_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
+			max_vert_freq_hz = max(max_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
+			min_hor_freq_hz = min(min_hor_freq_hz, edid_hdmi_modes[vic - 1].hor_freq_hz);
+			max_hor_freq_hz = max(max_hor_freq_hz, edid_hdmi_modes[vic - 1].hor_freq_hz);
+			max_pixclk_khz = max(max_pixclk_khz, edid_hdmi_modes[vic - 1].pixclk_khz);
 		    } else {
 			mode = "Unknown mode";
 		    }
@@ -2539,6 +2555,8 @@ int main(int argc, char **argv)
 	printf("Warning: CVT block corrects dotclock by more than 9.75MHz\n");
     if (warning_zero_preferred_refresh)
 	printf("Warning: CVT block does not set preferred refresh rate\n");
+    if ((supported_hdmi_vic_vsb_codes & supported_hdmi_vic_codes) != supported_hdmi_vic_codes)
+	printf("Warning: HDMI VIC Codes must have their CEA-861 VIC equivalents in the VSB\n");
 
     free(edid);
 
