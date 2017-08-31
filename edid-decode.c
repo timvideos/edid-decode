@@ -40,6 +40,7 @@ enum {
     EDID_PAGE_SIZE = 128u
 };
 
+static int edid_minor = 0;
 static int claims_one_point_oh = 0;
 static int claims_one_point_two = 0;
 static int claims_one_point_three = 0;
@@ -2359,6 +2360,7 @@ int main(int argc, char **argv)
 	    printf("Claims > 1.4, assuming 1.4 conformance\n");
 	    edid[0x13] = 4;
 	}
+	edid_minor = edid[0x13];
 	switch (edid[0x13]) {
 	case 4:
 	    claims_one_point_four = 1;
@@ -2611,10 +2613,10 @@ int main(int argc, char **argv)
 	    !has_name_descriptor ||
 	    !name_descriptor_terminated ||
 	    !has_preferred_timing ||
-	    !has_range_descriptor)
+	    (!claims_one_point_four && !has_range_descriptor))
 	    conformant = 0;
 	if (!conformant)
-	    printf("EDID block does NOT conform to EDID 1.3!\n");
+	    printf("EDID block does NOT conform to EDID 1.%d!\n", edid_minor);
 	if (nonconformant_srgb_chromaticity)
 	    printf("\tsRGB is signaled, but the chromaticities do not match\n");
 	if (nonconformant_digital_display)
@@ -2667,7 +2669,14 @@ int main(int argc, char **argv)
 	 min_hor_freq_hz < mon_min_hor_freq_hz ||
 	 max_hor_freq_hz > mon_max_hor_freq_hz ||
 	 max_pixclk_khz > mon_max_pixclk_khz)) {
-	    conformant = 0;
+	    /*
+	     * EDID 1.4 states (in an Errata) that explicitly defined
+	     * timings supersede the monitor range definition.
+	     */
+	    if (!claims_one_point_four)
+		    conformant = 0;
+	    else
+		    printf("Warning: ");
 	    printf("One or more of the timings is out of range of the Monitor Ranges:\n");
 	    printf("  Vertical Freq: %d - %d Hz\n", min_vert_freq_hz, max_vert_freq_hz);
 	    printf("  Horizontal Freq: %d - %d Hz\n", min_hor_freq_hz, max_hor_freq_hz);
