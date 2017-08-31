@@ -423,7 +423,7 @@ detailed_block(unsigned char *x, int in_extension)
 	    if (is_cvt) {
 		int max_h_pixels = 0;
 
-		printf("CVT version %d.%d\n", x[11] & 0xf0 >> 4, x[11] & 0x0f);
+		printf("CVT version %d.%d\n", (x[11] & 0xf0) >> 4, x[11] & 0x0f);
 
 		if (x[12] & 0xfc) {
 		    int raw_offset = (x[12] & 0xfc) >> 2;
