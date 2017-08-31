@@ -460,7 +460,7 @@ detailed_block(unsigned char *x, int in_extension)
 		}
 		printf("\n");
 
-		if (x[15] & 0x04)
+		if (x[15] & 0x08)
 		    printf("Supports CVT standard blanking\n");
 		if (x[15] & 0x10)
 		    printf("Supports CVT reduced blanking\n");
