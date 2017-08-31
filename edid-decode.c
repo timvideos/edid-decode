@@ -67,6 +67,7 @@ static int seen_non_detailed_descriptor = 0;
 
 static int warning_excessive_dotclock_correction = 0;
 static int warning_zero_preferred_refresh = 0;
+static int nonconformant_hf_vsdb_position = 0;
 
 static int conformant = 1;
 
@@ -1014,6 +1015,33 @@ cea_hdmi_block(unsigned char *x)
     }
 }
 
+static void
+cea_hf_block(unsigned char *x)
+{
+    printf(" (HDMI Forum)\n");
+    printf("    Version: %u\n", x[4]);
+    if (x[5])
+	    printf("    Maximum TMDS Character Rate: %uMHz\n", x[5] * 5);
+    if (x[6] & 0x80)
+	    printf("    SCDC Present\n");
+    if (x[6] & 0x40)
+	    printf("    SCDC Read Request Capable\n");
+    if (x[6] & 0x08)
+	    printf("    Supports scrambling for <= 340 Mcsc\n");
+    if (x[6] & 0x04)
+	    printf("    Supports 3D Independent View signaling\n");
+    if (x[6] & 0x02)
+	    printf("    Supports 3D Dual View signaling\n");
+    if (x[6] & 0x01)
+	    printf("    Supports 3D OSD Disparity signaling\n");
+    if (x[7] & 0x04)
+	    printf("    Supports 16-bits/component Deep Color 4:2:0 Pixel Encoding\n");
+    if (x[7] & 0x02)
+	    printf("    Supports 12-bits/component Deep Color 4:2:0 Pixel Encoding\n");
+    if (x[7] & 0x01)
+	    printf("    Supports 10-bits/component Deep Color 4:2:0 Pixel Encoding\n");
+}
+
 DEFINE_FIELD("YCbCr quantization", YCbCr_quantization, 7, 7,
              { 0, "No Data" },
              { 1, "Selectable (via AVI YQ)" });
@@ -1151,6 +1179,7 @@ cea_hdr_metadata_block(unsigned char *x)
 static void
 cea_block(unsigned char *x)
 {
+    static int last_block_was_hdmi_vsdb;
     unsigned int oui;
 
     switch ((x[0] & 0xe0) >> 5) {
@@ -1166,10 +1195,18 @@ cea_block(unsigned char *x)
 	    /* yes really, endianness lols */
 	    oui = (x[3] << 16) + (x[2] << 8) + x[1];
 	    printf("  Vendor-specific data block, OUI %06x", oui);
-	    if (oui == 0x000c03)
+	    if (oui == 0x000c03) {
 		cea_hdmi_block(x);
-	    else
+		last_block_was_hdmi_vsdb = 1;
+		return;
+	    }
+	    if (oui == 0xc45dd8) {
+		if (!last_block_was_hdmi_vsdb)
+			nonconformant_hf_vsdb_position = 1;
+		cea_hf_block(x);
+	    } else {
 		printf("\n");
+	    }
 	    break;
 	case 0x04:
 	    printf("  Speaker allocation data block\n");
@@ -1246,6 +1283,7 @@ cea_block(unsigned char *x)
 	    break;
 	}
     }
+    last_block_was_hdmi_vsdb = 0;
 }
 
 static int
@@ -2058,6 +2096,7 @@ int main(int argc, char **argv)
 
     if (claims_one_point_three) {
 	if (nonconformant_digital_display ||
+	    nonconformant_hf_vsdb_position ||
 	    !has_valid_string_termination ||
 	    !has_valid_descriptor_pad ||
 	    !has_name_descriptor ||
@@ -2070,6 +2109,8 @@ int main(int argc, char **argv)
 	if (nonconformant_digital_display)
 	    printf("\tDigital display field contains garbage: %x\n",
 		   nonconformant_digital_display);
+	if (nonconformant_hf_vsdb_position)
+	    printf("\tHDMI Forum VSDB did not immediately follow the HDMI VSDB\n");
 	if (!has_name_descriptor)
 	    printf("\tMissing name descriptor\n");
 	else if (!name_descriptor_terminated)
