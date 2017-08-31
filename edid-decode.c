@@ -381,9 +381,35 @@ detailed_block(unsigned char *x, int in_extension)
 		print_standard_timing(x[5 + i * 2], x[5 + i * 2 + 1]);
 	    return 1;
 	case 0xFB:
-	    /* TODO */
-	    printf("Color point\n");
+	{
+	    unsigned w_x, w_y;
+	    unsigned gamma;
+
+	    printf("Color point:\n");
+	    w_x = (x[7] << 2) | ((x[6] >> 2) & 3);
+	    w_y = (x[8] << 2) | (x[6] & 3);
+	    gamma = x[9];
+	    printf("  Index: %u White: 0.%04u, 0.%04u", x[5],
+		   (w_x * 10000) / 1024, (w_y * 10000) / 1024);
+	    if (gamma == 0xff)
+		printf(" Gamma: is defined in an extension block");
+	    else
+		printf(" Gamma: %.2f", ((gamma + 100.0) / 100.0));
+	    printf("\n");
+	    if (x[10] == 0)
+		    return 1;
+	    w_x = (x[12] << 2) | ((x[11] >> 2) & 3);
+	    w_y = (x[13] << 2) | (x[11] & 3);
+	    gamma = x[14];
+	    printf("  Index: %u White: 0.%04u, 0.%04u", x[10],
+		   (w_x * 10000) / 1024, (w_y * 10000) / 1024);
+	    if (gamma == 0xff)
+		printf(" Gamma: is defined in an extension block");
+	    else
+		printf(" Gamma: %.2f", ((gamma + 100.0) / 100.0));
+	    printf("\n");
 	    return 1;
+	}
 	case 0xFC:
 	    /* XXX should check for spaces after the \n */
 	    /* XXX check: terminated with 0x0A, padded with 0x20 */
