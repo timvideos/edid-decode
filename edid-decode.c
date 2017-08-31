@@ -2325,9 +2325,16 @@ int main(int argc, char **argv)
 	    memcmp(edid + 0x19, srgb_chromaticity, sizeof(srgb_chromaticity));
     }
     if (edid[0x18] & 0x02) {
-	printf("First detailed timing is preferred timing\n");
+	if (claims_one_point_four)
+		printf("First detailed timing includes the native pixel format and preferred refresh rate\n");
+	else
+		printf("First detailed timing is preferred timing\n");
+	has_preferred_timing = 1;
+    } else if (claims_one_point_four) {
+	/* 1.4 always has a preferred timing and this bit means something else. */
 	has_preferred_timing = 1;
     }
+
     if (edid[0x18] & 0x01) {
 	if (claims_one_point_four)
 	    printf("Display is continuous frequency\n");
