@@ -2157,32 +2157,6 @@ int main(int argc, char **argv)
 	// return 1;
     }
 
-    printf("Manufacturer: %s Model %x Serial Number %u\n",
-	    manufacturer_name(edid + 0x08),
-	    (unsigned short)(edid[0x0A] + (edid[0x0B] << 8)),
-	    (unsigned int)(edid[0x0C] + (edid[0x0D] << 8)
-			   + (edid[0x0E] << 16) + (edid[0x0F] << 24)));
-    has_valid_serial_number = edid[0x0C] || edid[0x0D] || edid[0x0E] || edid[0x0F];
-    /* XXX need manufacturer ID table */
-
-    time(&the_time);
-    ptm = localtime(&the_time);
-    if (edid[0x10] < 55 || edid[0x10] == 0xff) {
-	has_valid_week = 1;
-	if (edid[0x11] > 0x0f) {
-	    if (edid[0x10] == 0xff) {
-		has_valid_year = 1;
-		printf("Model year %hd\n", edid[0x11] + 1990);
-	    } else if (edid[0x11] + 90 <= ptm->tm_year) {
-		has_valid_year = 1;
-		if (edid[0x10])
-			printf("Made in week %hd of %hd\n", edid[0x10], edid[0x11] + 1990);
-		else
-			printf("Made in year %hd\n", edid[0x11] + 1990);
-	    }
-	}
-    }
-
     printf("EDID version: %hd.%hd\n", edid[0x12], edid[0x13]);
     if (edid[0x12] == 1) {
 	if (edid[0x13] > 4) {
@@ -2200,6 +2174,32 @@ int main(int argc, char **argv)
 	    break;
 	}
 	claims_one_point_oh = 1;
+    }
+
+    printf("Manufacturer: %s Model %x Serial Number %u\n",
+	    manufacturer_name(edid + 0x08),
+	    (unsigned short)(edid[0x0A] + (edid[0x0B] << 8)),
+	    (unsigned int)(edid[0x0C] + (edid[0x0D] << 8)
+			   + (edid[0x0E] << 16) + (edid[0x0F] << 24)));
+    has_valid_serial_number = edid[0x0C] || edid[0x0D] || edid[0x0E] || edid[0x0F];
+    /* XXX need manufacturer ID table */
+
+    time(&the_time);
+    ptm = localtime(&the_time);
+    if (edid[0x10] < 55 || (edid[0x10] == 0xff && claims_one_point_four)) {
+	has_valid_week = 1;
+	if (edid[0x11] > 0x0f) {
+	    if (edid[0x10] == 0xff) {
+		has_valid_year = 1;
+		printf("Model year %hd\n", edid[0x11] + 1990);
+	    } else if (edid[0x11] + 90 <= ptm->tm_year) {
+		has_valid_year = 1;
+		if (edid[0x10])
+			printf("Made in week %hd of %hd\n", edid[0x10], edid[0x11] + 1990);
+		else
+			printf("Made in year %hd\n", edid[0x11] + 1990);
+	    }
+	}
     }
 
     /* display section */
@@ -2294,8 +2294,7 @@ int main(int argc, char **argv)
 	printf("\n");
     }
 
-    /* FIXME: this is from 1.4 spec, check earlier */
-    if (analog) {
+    if (analog || !claims_one_point_four) {
 	switch (edid[0x18] & 0x18) {
 	case 0x00: printf("Monochrome or grayscale display\n"); break;
 	case 0x08: printf("RGB color display\n"); break;
