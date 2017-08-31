@@ -2064,8 +2064,12 @@ int main(int argc, char **argv)
 	printf("First detailed timing is preferred timing\n");
 	has_preferred_timing = 1;
     }
-    if (edid[0x18] & 0x01)
-	printf("Supports GTF timings within operating range\n");
+    if (edid[0x18] & 0x01) {
+	if (claims_one_point_four)
+	    printf("Display is continuous frequency\n");
+	else
+	    printf("Supports GTF timings within operating range\n");
+    }
 
     printf("Display x,y Chromaticity:\n");
     col_x = (edid[0x1b] << 2) | (edid[0x19] >> 6);
