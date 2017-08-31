@@ -2172,11 +2172,13 @@ int main(int argc, char **argv)
 	if (edid[0x11] > 0x0f) {
 	    if (edid[0x10] == 0xff) {
 		has_valid_year = 1;
-		printf("Made week %hd of model year %hd\n", edid[0x10],
-		       edid[0x11]);
+		printf("Model year %hd\n", edid[0x11] + 1990);
 	    } else if (edid[0x11] + 90 <= ptm->tm_year) {
 		has_valid_year = 1;
-		printf("Made week %hd of %hd\n", edid[0x10], edid[0x11] + 1990);
+		if (edid[0x10])
+			printf("Made in week %hd of %hd\n", edid[0x10], edid[0x11] + 1990);
+		else
+			printf("Made in year %hd\n", edid[0x11] + 1990);
 	    }
 	}
     }
