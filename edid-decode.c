@@ -33,6 +33,8 @@
 #include <ctype.h>
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
 
 enum {
     EDID_PAGE_SIZE = 128u
@@ -75,6 +77,17 @@ static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
 static int nonconformant_srgb_chromaticity = 0;
 static int nonconformant_cea861_640x480 = 0;
+
+static int min_hor_freq_hz = 0xfffffff;
+static int max_hor_freq_hz = 0;
+static int min_vert_freq_hz = 0xfffffff;
+static int max_vert_freq_hz = 0;
+static int max_pixclk_khz = 0;
+static int mon_min_hor_freq_hz = 0;
+static int mon_max_hor_freq_hz = 0;
+static int mon_min_vert_freq_hz = 0;
+static int mon_max_vert_freq_hz = 0;
+static int mon_max_pixclk_khz = 0;
 
 static int conformant = 1;
 
@@ -169,6 +182,7 @@ detailed_cvt_descriptor(unsigned char *x, int first)
     int width, height;
     int valid = 1;
     int fifty = 0, sixty = 0, seventyfive = 0, eightyfive = 0, reduced = 0;
+    int min_refresh = 0xfffffff, max_refresh = 0;
 
     if (!first && !memcmp(x, empty, 3))
 	return valid;
@@ -210,6 +224,9 @@ detailed_cvt_descriptor(unsigned char *x, int first)
     eightyfive  = (x[2] & 0x02);
     reduced	= (x[2] & 0x01);
 
+    min_refresh = (fifty ? 50 : (sixty ? 60 : (seventyfive ? 75 : (eightyfive ? 85 : min_refresh))));
+    max_refresh = (eightyfive ? 85 : (seventyfive ? 75 : (sixty ? 60 : (fifty ? 50 : max_refresh))));
+
     if (!valid) {
 	printf("    (broken)\n");
     } else {
@@ -222,50 +239,15 @@ detailed_cvt_descriptor(unsigned char *x, int first)
 		ratio,
 		names[(x[2] & 0x60) >> 5],
 		(((x[2] & 0x60) == 0x20) && reduced) ? "RB" : "");
+	min_vert_freq_hz = min(min_vert_freq_hz, min_refresh);
+	max_vert_freq_hz = max(max_vert_freq_hz, max_refresh);
+	/* TODO
+	min_hor_freq_hz = min(min_hor_freq_hz, established_timings3[i].hor_freq_hz);
+	max_hor_freq_hz = max(max_hor_freq_hz, established_timings3[i].hor_freq_hz);
+	max_pixclk_khz = max(max_pixclk_khz, established_timings3[i].pixclk_khz);*/
     }
 
     return valid;
-}
-
-static void print_standard_timing(uint8_t b1, uint8_t b2)
-{
-    const char *ratio;
-    unsigned int x, y, refresh;
-
-    if (b1 == 0x01 && b2 == 0x01)
-      return;
-
-    if (b1 == 0) {
-      printf("non-conformant standard timing (0 horiz)\n");
-      return;
-    }
-    x = (b1 + 31) * 8;
-    switch ((b2 >> 6) & 0x3) {
-    case 0x00:
-      if (claims_one_point_three) {
-        y = x * 10 / 16;
-        ratio = "16:10";
-      } else {
-        y = x;
-        ratio = "1:1";
-      }
-      break;
-    case 0x01:
-      y = x * 3 / 4;
-      ratio = "4:3";
-      break;
-    case 0x02:
-      y = x * 4 / 5;
-      ratio = "5:4";
-      break;
-    case 0x03:
-      y = x * 9 / 16;
-      ratio = "16:9";
-      break;
-    }
-    refresh = 60 + (b2 & 0x3f);
-
-    printf("  %dx%d@%dHz %s\n", x, y, refresh, ratio);
 }
 
 /* extract a string from a detailed subblock, checking for termination */
@@ -299,6 +281,32 @@ extract_string(unsigned char *x, int *valid_termination, int len)
 
     return ret;
 }
+
+static const struct {
+  int x, y, refresh, ratio_w, ratio_h;
+  int hor_freq_hz, pixclk_khz, interlaced;
+} established_timings[] = {
+  /* 0x23 bit 7 - 0 */
+  {720, 400, 70, 9, 5, 31469, 28320},
+  {720, 400, 88, 9, 5, 39500, 35500},
+  {640, 480, 60, 4, 3, 31469, 25175},
+  {640, 480, 67, 4, 3, 35000, 30240},
+  {640, 480, 72, 4, 3, 37900, 31500},
+  {640, 480, 75, 4, 3, 37500, 31500},
+  {800, 600, 56, 4, 3, 35200, 36000},
+  {800, 600, 60, 4, 3, 37900, 40000},
+  /* 0x24 bit 7 - 0 */
+  {800, 600, 72, 4, 3, 48100, 50000},
+  {800, 600, 75, 4, 3, 46900, 49500},
+  {832, 624, 75, 4, 3, 49726, 57284},
+  {1280, 768, 87, 5, 3, 35522, 44900, 1},
+  {1024, 768, 60, 4, 3, 48400, 65000},
+  {1024, 768, 70, 4, 3, 56500, 75000},
+  {1024, 768, 75, 4, 3, 60000, 78750},
+  {1280, 1024, 75, 5, 4, 80000, 135000},
+  /* 0x25 bit 7*/
+  {1152, 870, 75, 192, 145, 67500, 108000},
+};
 
 static const struct {
   int x, y, refresh, ratio_w, ratio_h;
@@ -356,12 +364,92 @@ static const struct {
   {1920, 1440, 75, 4, 3, 112500, 297000},
 };
 
+static void print_standard_timing(uint8_t b1, uint8_t b2)
+{
+    int ratio_w, ratio_h;
+    unsigned int x, y, refresh;
+    int pixclk_khz = 0, hor_freq_hz = 0;
+    int i;
+
+    if (b1 == 0x01 && b2 == 0x01)
+      return;
+
+    if (b1 == 0) {
+      printf("non-conformant standard timing (0 horiz)\n");
+      return;
+    }
+    x = (b1 + 31) * 8;
+    switch ((b2 >> 6) & 0x3) {
+    case 0x00:
+      if (claims_one_point_three) {
+        y = x * 10 / 16;
+	ratio_w = 16;
+	ratio_h = 10;
+      } else {
+        y = x;
+	ratio_w = 1;
+	ratio_h = 1;
+      }
+      break;
+    case 0x01:
+      y = x * 3 / 4;
+      ratio_w = 4;
+      ratio_h = 3;
+      break;
+    case 0x02:
+      y = x * 4 / 5;
+      ratio_w = 5;
+      ratio_h = 4;
+      break;
+    case 0x03:
+      y = x * 9 / 16;
+      ratio_w = 16;
+      ratio_h = 9;
+      break;
+    }
+    refresh = 60 + (b2 & 0x3f);
+
+    printf("  %dx%d@%dHz %d:%d\n", x, y, refresh, ratio_w, ratio_h);
+    min_vert_freq_hz = min(min_vert_freq_hz, refresh);
+    max_vert_freq_hz = max(max_vert_freq_hz, refresh);
+    for (i = 0; i < ARRAY_SIZE(established_timings); i++) {
+	    if (established_timings[i].x == x &&
+		established_timings[i].y == y &&
+		established_timings[i].refresh == refresh &&
+		established_timings[i].ratio_w == ratio_w &&
+		established_timings[i].ratio_h == ratio_h) {
+		    pixclk_khz = established_timings[i].pixclk_khz;
+		    hor_freq_hz = established_timings[i].hor_freq_hz;
+		    break;
+	    }
+    }
+    if (pixclk_khz == 0) {
+	    for (i = 0; i < ARRAY_SIZE(established_timings3); i++) {
+		    if (established_timings3[i].x == x &&
+			established_timings3[i].y == y &&
+			established_timings3[i].refresh == refresh &&
+			established_timings3[i].ratio_w == ratio_w &&
+			established_timings3[i].ratio_h == ratio_h) {
+			    pixclk_khz = established_timings3[i].pixclk_khz;
+			    hor_freq_hz = established_timings3[i].hor_freq_hz;
+			    break;
+		    }
+	    }
+    }
+    if (pixclk_khz) {
+      min_hor_freq_hz = min(min_hor_freq_hz, hor_freq_hz);
+      max_hor_freq_hz = max(max_hor_freq_hz, hor_freq_hz);
+      max_pixclk_khz = max(max_pixclk_khz, pixclk_khz);
+    }
+}
+
 /* 1 means valid data */
 static int
 detailed_block(unsigned char *x, int in_extension)
 {
     static unsigned char name[53];
     int ha, hbl, hso, hspw, hborder, va, vbl, vso, vspw, vborder;
+    int refresh, pixclk_khz;
     int i;
     char phsync, pvsync, *syncmethod, *stereo;
 
@@ -412,6 +500,11 @@ detailed_block(unsigned char *x, int in_extension)
 		       established_timings3[i].y, established_timings3[i].refresh,
 		       established_timings3[i].rb ? "RB " : "",
 		       established_timings3[i].ratio_w, established_timings3[i].ratio_h);
+		min_vert_freq_hz = min(min_vert_freq_hz, established_timings3[i].refresh);
+		max_vert_freq_hz = max(max_vert_freq_hz, established_timings3[i].refresh);
+		min_hor_freq_hz = min(min_hor_freq_hz, established_timings3[i].hor_freq_hz);
+		max_hor_freq_hz = max(max_hor_freq_hz, established_timings3[i].hor_freq_hz);
+		max_pixclk_khz = max(max_pixclk_khz, established_timings3[i].pixclk_khz);
 	      }
 	    }
 	    return 1;
@@ -543,15 +636,20 @@ detailed_block(unsigned char *x, int in_extension)
 
 	    if (x[5] + v_min_offset > x[6] + v_max_offset)
 		has_valid_range_descriptor = 0;
+	    mon_min_vert_freq_hz = x[5] + v_min_offset;
+	    mon_max_vert_freq_hz = x[6] + v_max_offset;
 	    if (x[7] + h_min_offset > x[8] + h_max_offset)
 		has_valid_range_descriptor = 0;
+	    mon_min_hor_freq_hz = (x[7] + h_min_offset) * 1000;
+	    mon_max_hor_freq_hz = (x[8] + h_max_offset) * 1000;
 	    printf("Monitor ranges (%s): %d-%dHz V, %d-%dkHz H",
 		   range_class,
 		   x[5] + v_min_offset, x[6] + v_max_offset,
 		   x[7] + h_min_offset, x[8] + h_max_offset);
-	    if (x[9])
+	    if (x[9]) {
+		mon_max_pixclk_khz = x[9] * 10000;
 		printf(", max dotclock %dMHz\n", x[9] * 10);
-	    else {
+	    } else {
 		if (claims_one_point_four)
 		    has_valid_max_dotclock = 0;
 		printf("\n");
@@ -706,11 +804,13 @@ detailed_block(unsigned char *x, int in_extension)
 	break;
     }
 
+    pixclk_khz = (x[0] + (x[1] << 8)) * 10;
+    refresh = (pixclk_khz * 1000) / ((ha + hbl) * (va + vbl));
     printf("Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
 	   "               %4d %4d %4d %4d hborder %d\n"
 	   "               %4d %4d %4d %4d vborder %d\n"
 	   "               %chsync %cvsync%s%s %s\n",
-	    (x[0] + (x[1] << 8)) / 100.0,
+	    pixclk_khz / 1000.0,
 	    (x[12] + ((x[14] & 0xF0) << 4)),
 	    (x[13] + ((x[14] & 0x0F) << 8)),
 	   ha, ha + hso, ha + hso + hspw, ha + hbl, hborder,
@@ -718,6 +818,11 @@ detailed_block(unsigned char *x, int in_extension)
 	   phsync, pvsync, syncmethod, x[17] & 0x80 ? " interlaced" : "",
 	   stereo
 	  );
+    min_vert_freq_hz = min(min_vert_freq_hz, refresh);
+    max_vert_freq_hz = max(max_vert_freq_hz, refresh);
+    min_hor_freq_hz = min(min_hor_freq_hz, (pixclk_khz * 1000) / (ha + hbl));
+    max_hor_freq_hz = max(max_hor_freq_hz, (pixclk_khz * 1000) / (ha + hbl));
+    max_pixclk_khz = max(max_pixclk_khz, pixclk_khz);
     /* XXX flag decode */
     
     return 1;
@@ -807,126 +912,126 @@ cea_audio_block(unsigned char *x)
 
 static struct {
     const char *name;
-    int hor_freq_hz, pixclk_khz;
+    int refresh, hor_freq_hz, pixclk_khz;
 } edid_cea_modes[] = {
     /* VIC 1 */
-    {"640x480@60Hz 4:3", 31469, 25175},
-    {"720x480@60Hz 4:3", 31469, 27000},
-    {"720x480@60Hz 16:9", 31469, 27000},
-    {"1280x720@60Hz 16:9", 45000, 74250},
-    {"1920x1080i@60Hz 16:9", 33750, 74250},
-    {"1440x480i@60Hz 4:3", 15734, 27000},
-    {"1440x480i@60Hz 16:9", 15734, 27000},
-    {"1440x240@60Hz 4:3", 15734, 27000},
-    {"1440x240@60Hz 16:9", 15734, 27000},
-    {"2880x480i@60Hz 4:3", 15734, 54000},
+    {"640x480@60Hz 4:3", 60, 31469, 25175},
+    {"720x480@60Hz 4:3", 60, 31469, 27000},
+    {"720x480@60Hz 16:9", 60, 31469, 27000},
+    {"1280x720@60Hz 16:9", 60, 45000, 74250},
+    {"1920x1080i@60Hz 16:9", 60, 33750, 74250},
+    {"1440x480i@60Hz 4:3", 60, 15734, 27000},
+    {"1440x480i@60Hz 16:9", 60, 15734, 27000},
+    {"1440x240@60Hz 4:3", 60, 15734, 27000},
+    {"1440x240@60Hz 16:9", 60, 15734, 27000},
+    {"2880x480i@60Hz 4:3", 60, 15734, 54000},
     /* VIC 11 */
-    {"2880x480i@60Hz 16:9", 15734, 54000},
-    {"2880x240@60Hz 4:3", 15734, 54000},
-    {"2880x240@60Hz 16:9", 15734, 54000},
-    {"1440x480@60Hz 4:3", 31469, 54000},
-    {"1440x480@60Hz 16:9", 31469, 54000},
-    {"1920x1080@60Hz 16:9", 67500, 148500},
-    {"720x576@50Hz 4:3", 31250, 27000},
-    {"720x576@50Hz 16:9", 31250, 27000},
-    {"1280x720@50Hz 16:9", 37500, 74250},
-    {"1920x1080i@50Hz 16:9", 28125, 74250},
+    {"2880x480i@60Hz 16:9", 60, 15734, 54000},
+    {"2880x240@60Hz 4:3", 60, 15734, 54000},
+    {"2880x240@60Hz 16:9", 60, 15734, 54000},
+    {"1440x480@60Hz 4:3", 60, 31469, 54000},
+    {"1440x480@60Hz 16:9", 60, 31469, 54000},
+    {"1920x1080@60Hz 16:9", 60, 67500, 148500},
+    {"720x576@50Hz 4:3", 50, 31250, 27000},
+    {"720x576@50Hz 16:9", 50, 31250, 27000},
+    {"1280x720@50Hz 16:9", 50, 37500, 74250},
+    {"1920x1080i@50Hz 16:9", 50, 28125, 74250},
     /* VIC 21 */
-    {"1440x576i@50Hz 4:3", 15625, 27000},
-    {"1440x576i@50Hz 16:9", 15625, 27000},
-    {"1440x288@50Hz 4:3", 15625, 27000},
-    {"1440x288@50Hz 16:9", 15625, 27000},
-    {"2880x576i@50Hz 4:3", 15625, 54000},
-    {"2880x576i@50Hz 16:9", 15625, 54000},
-    {"2880x288@50Hz 4:3", 15625, 54000},
-    {"2880x288@50Hz 16:9", 15625, 54000},
-    {"1440x576@50Hz 4:3", 31250, 54000},
-    {"1440x576@50Hz 16:9", 31250, 54000},
+    {"1440x576i@50Hz 4:3", 50, 15625, 27000},
+    {"1440x576i@50Hz 16:9", 50, 15625, 27000},
+    {"1440x288@50Hz 4:3", 50, 15625, 27000},
+    {"1440x288@50Hz 16:9", 50, 15625, 27000},
+    {"2880x576i@50Hz 4:3", 50, 15625, 54000},
+    {"2880x576i@50Hz 16:9", 50, 15625, 54000},
+    {"2880x288@50Hz 4:3", 50, 15625, 54000},
+    {"2880x288@50Hz 16:9", 50, 15625, 54000},
+    {"1440x576@50Hz 4:3", 50, 31250, 54000},
+    {"1440x576@50Hz 16:9", 50, 31250, 54000},
     /* VIC 31 */
-    {"1920x1080@50Hz 16:9", 56250, 148500},
-    {"1920x1080@24Hz 16:9", 27000, 74250},
-    {"1920x1080@25Hz 16:9", 28125, 74250},
-    {"1920x1080@30Hz 16:9", 33750, 74250},
-    {"2880x480@60Hz 4:3", 31469, 108000},
-    {"2880x480@60Hz 16:9", 31469, 108000},
-    {"2880x576@50Hz 4:3", 31250, 108000},
-    {"2880x576@50Hz 16:9", 31250, 108000},
-    {"1920x1080i@50Hz 16:9", 31250, 72000},
-    {"1920x1080i@100Hz 16:9", 56250, 148500},
+    {"1920x1080@50Hz 16:9", 50, 56250, 148500},
+    {"1920x1080@24Hz 16:9", 24, 27000, 74250},
+    {"1920x1080@25Hz 16:9", 25, 28125, 74250},
+    {"1920x1080@30Hz 16:9", 30, 33750, 74250},
+    {"2880x480@60Hz 4:3", 60, 31469, 108000},
+    {"2880x480@60Hz 16:9", 60, 31469, 108000},
+    {"2880x576@50Hz 4:3", 50, 31250, 108000},
+    {"2880x576@50Hz 16:9", 50, 31250, 108000},
+    {"1920x1080i@50Hz 16:9", 50, 31250, 72000},
+    {"1920x1080i@100Hz 16:9", 100, 56250, 148500},
     /* VIC 41 */
-    {"1280x720@100Hz 16:9", 75000, 148500},
-    {"720x576@100Hz 4:3", 62500, 54000},
-    {"720x576@100Hz 16:9", 62500, 54000},
-    {"1440x576@100Hz 4:3", 31250, 54000},
-    {"1440x576@100Hz 16:9", 31250, 54000},
-    {"1920x1080i@120Hz 16:9", 67500, 148500},
-    {"1280x720@120Hz 16:9", 90000, 148500},
-    {"720x480@120Hz 4:3", 62937, 54000},
-    {"720x480@120Hz 16:9", 62937, 54000},
-    {"1440x480i@120Hz 4:3", 31469, 54000},
+    {"1280x720@100Hz 16:9", 100, 75000, 148500},
+    {"720x576@100Hz 4:3", 100, 62500, 54000},
+    {"720x576@100Hz 16:9", 100, 62500, 54000},
+    {"1440x576@100Hz 4:3", 100, 31250, 54000},
+    {"1440x576@100Hz 16:9", 100, 31250, 54000},
+    {"1920x1080i@120Hz 16:9", 120, 67500, 148500},
+    {"1280x720@120Hz 16:9", 120, 90000, 148500},
+    {"720x480@120Hz 4:3", 120, 62937, 54000},
+    {"720x480@120Hz 16:9", 120, 62937, 54000},
+    {"1440x480i@120Hz 4:3", 120, 31469, 54000},
     /* VIC 51 */
-    {"1440x480i@120Hz 16:9", 31469, 54000},
-    {"720x576@200Hz 4:3", 125000, 108000},
-    {"720x576@200Hz 16:9", 125000, 108000},
-    {"1440x576i@200Hz 4:3", 62500, 108000},
-    {"1440x576i@200Hz 16:9", 62500, 108000},
-    {"720x480@240Hz 4:3", 125874, 108000},
-    {"720x480@240Hz 16:9", 125874, 108000},
-    {"1440x480i@240Hz 4:3", 62937, 108000},
-    {"1440x480i@240Hz 16:9", 62937, 108000},
-    {"1280x720@24Hz 16:9", 18000, 59400},
+    {"1440x480i@120Hz 16:9", 120, 31469, 54000},
+    {"720x576@200Hz 4:3", 200, 125000, 108000},
+    {"720x576@200Hz 16:9", 200, 125000, 108000},
+    {"1440x576i@200Hz 4:3", 200, 62500, 108000},
+    {"1440x576i@200Hz 16:9", 200, 62500, 108000},
+    {"720x480@240Hz 4:3", 240, 125874, 108000},
+    {"720x480@240Hz 16:9", 240, 125874, 108000},
+    {"1440x480i@240Hz 4:3", 240, 62937, 108000},
+    {"1440x480i@240Hz 16:9", 240, 62937, 108000},
+    {"1280x720@24Hz 16:9", 24, 18000, 59400},
     /* VIC 61 */
-    {"1280x720@25Hz 16:9", 18750, 74250},
-    {"1280x720@30Hz 16:9", 22500, 74250},
-    {"1920x1080@120Hz 16:9", 135000, 297000},
-    {"1920x1080@100Hz 16:9", 112500, 297000},
-    {"1280x720@24Hz 64:27", 18000, 59400},
-    {"1280x720@25Hz 64:27", 18750, 74250},
-    {"1280x720@30Hz 64:27", 22500, 74250},
-    {"1280x720@50Hz 64:27", 37500, 74250},
-    {"1280x720@60Hz 64:27", 45000, 74250},
-    {"1280x720@100Hz 64:27", 75000, 148500},
+    {"1280x720@25Hz 16:9", 25, 18750, 74250},
+    {"1280x720@30Hz 16:9", 30, 22500, 74250},
+    {"1920x1080@120Hz 16:9", 120, 135000, 297000},
+    {"1920x1080@100Hz 16:9", 100, 112500, 297000},
+    {"1280x720@24Hz 64:27", 24, 18000, 59400},
+    {"1280x720@25Hz 64:27", 25, 18750, 74250},
+    {"1280x720@30Hz 64:27", 30, 22500, 74250},
+    {"1280x720@50Hz 64:27", 50, 37500, 74250},
+    {"1280x720@60Hz 64:27", 60, 45000, 74250},
+    {"1280x720@100Hz 64:27", 100, 75000, 148500},
     /* VIC 71 */
-    {"1280x720@120Hz 64:27", 91000, 148500},
-    {"1920x1080@24Hz 64:27", 27000, 74250},
-    {"1920x1080@25Hz 64:27", 28125, 74250},
-    {"1920x1080@30Hz 64:27", 33750, 74250},
-    {"1920x1080@50Hz 64:27", 56250, 148500},
-    {"1920x1080@60Hz 64:27", 67500, 148500},
-    {"1920x1080@100Hz 64:27", 112500, 297000},
-    {"1920x1080@120Hz 64:27", 135000, 297000},
-    {"1680x720@24Hz 64:27", 18000, 59400},
-    {"1680x720@25Hz 64:27", 18750, 59400},
+    {"1280x720@120Hz 64:27", 120, 91000, 148500},
+    {"1920x1080@24Hz 64:27", 24, 27000, 74250},
+    {"1920x1080@25Hz 64:27", 25, 28125, 74250},
+    {"1920x1080@30Hz 64:27", 30, 33750, 74250},
+    {"1920x1080@50Hz 64:27", 50, 56250, 148500},
+    {"1920x1080@60Hz 64:27", 60, 67500, 148500},
+    {"1920x1080@100Hz 64:27", 100, 112500, 297000},
+    {"1920x1080@120Hz 64:27", 120, 135000, 297000},
+    {"1680x720@24Hz 64:27", 24, 18000, 59400},
+    {"1680x720@25Hz 64:27", 25, 18750, 59400},
     /* VIC 81 */
-    {"1680x720@30Hz 64:27", 22500, 59400},
-    {"1680x720@50Hz 64:27", 37500, 82500},
-    {"1680x720@60Hz 64:27", 45000, 99000},
-    {"1680x720@100Hz 64:27", 82500, 165000},
-    {"1680x720@120Hz 64:27", 99000, 198000},
-    {"2560x1080@24Hz 64:27", 26400, 99000},
-    {"2560x1080@25Hz 64:27", 28125, 90000},
-    {"2560x1080@30Hz 64:27", 33750, 118800},
-    {"2560x1080@50Hz 64:27", 56250, 185625},
-    {"2560x1080@60Hz 64:27", 66000, 198000},
+    {"1680x720@30Hz 64:27", 30, 22500, 59400},
+    {"1680x720@50Hz 64:27", 50, 37500, 82500},
+    {"1680x720@60Hz 64:27", 60, 45000, 99000},
+    {"1680x720@100Hz 64:27", 100, 82500, 165000},
+    {"1680x720@120Hz 64:27", 120, 99000, 198000},
+    {"2560x1080@24Hz 64:27", 24, 26400, 99000},
+    {"2560x1080@25Hz 64:27", 25, 28125, 90000},
+    {"2560x1080@30Hz 64:27", 30, 33750, 118800},
+    {"2560x1080@50Hz 64:27", 50, 56250, 185625},
+    {"2560x1080@60Hz 64:27", 60, 66000, 198000},
     /* VIC 91 */
-    {"2560x1080@100Hz 64:27", 125000, 371250},
-    {"2560x1080@120Hz 64:27", 150000, 495000},
-    {"3840x2160@24Hz 16:9", 54000, 297000},
-    {"3840x2160@25Hz 16:9", 56250, 297000},
-    {"3840x2160@30Hz 16:9", 67500, 297000},
-    {"3840x2160@50Hz 16:9", 112500, 594000},
-    {"3840x2160@60Hz 16:9", 135000, 594000},
-    {"4096x2160@24Hz 256:135", 54000, 297000},
-    {"4096x2160@25Hz 256:135", 56250, 297000},
-    {"4096x2160@30Hz 256:135", 67500, 297000},
+    {"2560x1080@100Hz 64:27", 100, 125000, 371250},
+    {"2560x1080@120Hz 64:27", 120, 150000, 495000},
+    {"3840x2160@24Hz 16:9", 24, 54000, 297000},
+    {"3840x2160@25Hz 16:9", 25, 56250, 297000},
+    {"3840x2160@30Hz 16:9", 30, 67500, 297000},
+    {"3840x2160@50Hz 16:9", 50, 112500, 594000},
+    {"3840x2160@60Hz 16:9", 60, 135000, 594000},
+    {"4096x2160@24Hz 256:135", 24, 54000, 297000},
+    {"4096x2160@25Hz 256:135", 25, 56250, 297000},
+    {"4096x2160@30Hz 256:135", 30, 67500, 297000},
     /* VIC 101 */
-    {"4096x2160@50Hz 256:135", 112500, 594000},
-    {"4096x2160@60Hz 256:135", 135000, 594000},
-    {"3840x2160@24Hz 64:27", 54000, 297000},
-    {"3840x2160@25Hz 64:27", 56250, 297000},
-    {"3840x2160@30Hz 64:27", 67500, 297000},
-    {"3840x2160@50Hz 64:27", 112500, 594000},
-    {"3840x2160@60Hz 64:27", 135000, 594000},
+    {"4096x2160@50Hz 256:135", 50, 112500, 594000},
+    {"4096x2160@60Hz 256:135", 60, 135000, 594000},
+    {"3840x2160@24Hz 64:27", 24, 54000, 297000},
+    {"3840x2160@25Hz 64:27", 25, 56250, 297000},
+    {"3840x2160@30Hz 64:27", 30, 67500, 297000},
+    {"3840x2160@50Hz 64:27", 50, 112500, 594000},
+    {"3840x2160@60Hz 64:27", 60, 135000, 594000},
 };
 
 static void
@@ -951,10 +1056,16 @@ cea_svd(unsigned char *x, int n)
 	    native = svd & 0x80;
 	}
 
-	if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes))
+	if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes)) {
 	    mode = edid_cea_modes[vic - 1].name;
-	else
+	    min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
+	    max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
+	    min_hor_freq_hz = min(min_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
+	    max_hor_freq_hz = max(max_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
+	    max_pixclk_khz = max(max_pixclk_khz, edid_cea_modes[vic - 1].pixclk_khz);
+	} else {
 	    mode = "Unknown mode";
+	}
 
 	printf("    VIC %3d %s %s\n", vic, mode, native ? "(native)" : "");
 	if (vic == 1)
@@ -1010,12 +1121,12 @@ cea_vfpdb(unsigned char *x)
 
 static struct {
     const char *name;
-    int hor_freq_hz, pixclk_khz;
+    int refresh, hor_freq_hz, pixclk_khz;
 } edid_cea_hdmi_modes[] = {
-    {"3840x2160@30Hz 16:9", 67500, 297000},
-    {"3840x2160@25Hz 16:9", 56250, 297000},
-    {"3840x2160@24Hz 16:9", 54000, 297000},
-    {"4096x2160@24Hz 256:135", 54000, 297000},
+    {"3840x2160@30Hz 16:9", 30, 67500, 297000},
+    {"3840x2160@25Hz 16:9", 25, 56250, 297000},
+    {"3840x2160@24Hz 16:9", 24, 54000, 297000},
+    {"4096x2160@24Hz 256:135", 24, 54000, 297000},
 };
 
 static void
@@ -1101,10 +1212,16 @@ cea_hdmi_block(unsigned char *x)
                     const char *mode;
 
                     vic--;
-                    if (vic < ARRAY_SIZE(edid_cea_hdmi_modes))
-                            mode = edid_cea_hdmi_modes[vic].name;
-                    else
-                            mode = "Unknown mode";
+                    if (vic < ARRAY_SIZE(edid_cea_hdmi_modes)) {
+			mode = edid_cea_hdmi_modes[vic].name;
+			min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_hdmi_modes[vic].refresh);
+			max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_hdmi_modes[vic].refresh);
+			min_hor_freq_hz = min(min_hor_freq_hz, edid_cea_hdmi_modes[vic].hor_freq_hz);
+			max_hor_freq_hz = max(max_hor_freq_hz, edid_cea_hdmi_modes[vic].hor_freq_hz);
+			max_pixclk_khz = max(max_pixclk_khz, edid_cea_hdmi_modes[vic].pixclk_khz);
+		    } else {
+			mode = "Unknown mode";
+		    }
 
 		    printf("      HDMI VIC %d %s\n", vic, mode);
                 }
@@ -1933,32 +2050,6 @@ extract_edid(int fd)
     return out;
 }
 
-static const struct {
-  int x, y, refresh, ratio_w, ratio_h;
-  int hor_freq_hz, pixclk_khz, interlaced;
-} established_timings[] = {
-  /* 0x23 bit 7 - 0 */
-  {720, 400, 70, 9, 5, 31469, 28320},
-  {720, 400, 88, 9, 5, 39500, 35500},
-  {640, 480, 60, 4, 3, 31469, 25175},
-  {640, 480, 67, 4, 3, 35000, 30240},
-  {640, 480, 72, 4, 3, 37900, 31500},
-  {640, 480, 75, 4, 3, 37500, 31500},
-  {800, 600, 56, 4, 3, 35200, 36000},
-  {800, 600, 60, 4, 3, 37900, 40000},
-  /* 0x24 bit 7 - 0 */
-  {800, 600, 72, 4, 3, 48100, 50000},
-  {800, 600, 75, 4, 3, 46900, 49500},
-  {832, 624, 75, 4, 3, 49726, 57284},
-  {1280, 768, 87, 5, 3, 35522, 44900, 1},
-  {1024, 768, 60, 4, 3, 48400, 65000},
-  {1024, 768, 70, 4, 3, 56500, 75000},
-  {1024, 768, 75, 4, 3, 60000, 78750},
-  {1280, 1024, 75, 5, 4, 80000, 135000},
-  /* 0x25 bit 7*/
-  {1152, 870, 75, 192, 145, 67500, 108000},
-};
-
 static void print_subsection(char *name, unsigned char *edid, int start,
 			     int end)
 {
@@ -2252,6 +2343,11 @@ int main(int argc, char **argv)
 	       established_timings[i].interlaced ? "i" : "",
 	       established_timings[i].refresh,
 	       established_timings[i].ratio_w, established_timings[i].ratio_h);
+	min_vert_freq_hz = min(min_vert_freq_hz, established_timings[i].refresh);
+	max_vert_freq_hz = max(max_vert_freq_hz, established_timings[i].refresh);
+	min_hor_freq_hz = min(min_hor_freq_hz, established_timings[i].hor_freq_hz);
+	max_hor_freq_hz = max(max_hor_freq_hz, established_timings[i].hor_freq_hz);
+	max_pixclk_khz = max(max_pixclk_khz, established_timings[i].pixclk_khz);
       }
     }
     has_640x480p60_est_timing = edid[0x23] & 0x20;
@@ -2333,6 +2429,19 @@ int main(int argc, char **argv)
 	    printf("EDID block does NOT conform to EDID 1.0!\n");
 	if (seen_non_detailed_descriptor)
 	    printf("\tHas descriptor blocks other than detailed timings\n");
+    }
+
+    if (has_valid_range_descriptor &&
+	(min_vert_freq_hz < mon_min_vert_freq_hz ||
+	 max_vert_freq_hz > mon_max_vert_freq_hz ||
+	 min_hor_freq_hz < mon_min_hor_freq_hz ||
+	 max_hor_freq_hz > mon_max_hor_freq_hz ||
+	 max_pixclk_khz > mon_max_pixclk_khz)) {
+	    conformant = 0;
+	    printf("One or more of the timings is out of range of the Monitor Ranges:\n");
+	    printf("  Vertical Freq: %d - %d Hz\n", min_vert_freq_hz, max_vert_freq_hz);
+	    printf("  Horizontal Freq: %d - %d Hz\n", min_hor_freq_hz, max_hor_freq_hz);
+	    printf("  Maximum Clock: %.3f MHz\n", max_pixclk_khz / 1000.0);
     }
 
     if (nonconformant_extension ||
