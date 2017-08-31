@@ -300,6 +300,61 @@ extract_string(unsigned char *x, int *valid_termination, int len)
     return ret;
 }
 
+static const struct {
+  int x, y, refresh, ratio_w, ratio_h, rb;
+} established_timings3[] = {
+  /* 0x06 bit 7 - 0 */
+  {640, 350, 85, 64, 35},
+  {640, 400, 85, 16, 10},
+  {720, 400, 85, 9, 5},
+  {640, 480, 85, 4, 3},
+  {848, 480, 60, 53, 30},
+  {800, 600, 85, 4, 3},
+  {1024, 768, 85, 4, 3},
+  {1152, 864, 75, 4, 3},
+  /* 0x07 bit 7 - 0 */
+  {1280, 768, 60, 5, 3, 1},
+  {1280, 768, 60, 5, 3},
+  {1280, 768, 75, 5, 3},
+  {1280, 768, 85, 5, 3},
+  {1280, 960, 60, 4, 3},
+  {1280, 960, 85, 4, 3},
+  {1280, 1024, 60, 5, 4},
+  {1280, 1024, 85, 5, 4},
+  /* 0x08 bit 7 - 0 */
+  {1360, 768, 60, 85, 48},
+  {1440, 900, 60, 16, 10, 1},
+  {1440, 900, 60, 16, 10},
+  {1440, 900, 75, 16, 10},
+  {1440, 900, 85, 16, 10},
+  {1400, 1050, 60, 4, 3, 1},
+  {1400, 1050, 60, 4, 3},
+  {1400, 1050, 75, 4, 3},
+  /* 0x09 bit 7 - 0 */
+  {1400, 1050, 85, 4, 3},
+  {1680, 1050, 60, 16, 10, 1},
+  {1680, 1050, 60, 16, 10},
+  {1680, 1050, 75, 16, 10},
+  {1680, 1050, 85, 16, 10},
+  {1600, 1200, 60, 4, 3},
+  {1600, 1200, 65, 4, 3},
+  {1600, 1200, 70, 4, 3},
+  /* 0x0a bit 7 - 0 */
+  {1600, 1200, 75, 4, 3},
+  {1600, 1200, 85, 4, 3},
+  {1792, 1344, 60, 4, 3},
+  {1792, 1344, 75, 4, 3},
+  {1856, 1392, 60, 4, 3},
+  {1856, 1392, 75, 4, 3},
+  {1920, 1200, 60, 16, 10, 1},
+  {1920, 1200, 60, 16, 10},
+  /* 0x0b bit 7 - 4 */
+  {1920, 1200, 75, 16, 10},
+  {1920, 1200, 85, 16, 10},
+  {1920, 1440, 60, 4, 3},
+  {1920, 1440, 75, 4, 3},
+};
+
 /* 1 means valid data */
 static int
 detailed_block(unsigned char *x, int in_extension)
@@ -349,8 +404,15 @@ detailed_block(unsigned char *x, int in_extension)
 		    has_valid_dummy_block = 0;
 	    return 1;
 	case 0xF7:
-	    /* TODO */
-	    printf("Established timings III\n");
+	    printf("Established timings III:\n");
+	    for (i = 0; i < 44; i++) {
+	      if (x[6 + i / 8] & (1 << (7 - i % 8))) {
+		printf("  %dx%d@%dHz %s%u:%u\n", established_timings3[i].x,
+		       established_timings3[i].y, established_timings3[i].refresh,
+		       established_timings3[i].rb ? "RB " : "",
+		       established_timings3[i].ratio_w, established_timings3[i].ratio_h);
+	      }
+	    }
 	    return 1;
 	case 0xF8:
 	{
