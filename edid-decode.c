@@ -1035,7 +1035,7 @@ static struct {
 };
 
 static void
-cea_svd(unsigned char *x, int n)
+cea_svd(unsigned char *x, int n, int for_ycbcr420)
 {
     int i;
 
@@ -1062,7 +1062,8 @@ cea_svd(unsigned char *x, int n)
 	    max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
 	    min_hor_freq_hz = min(min_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
 	    max_hor_freq_hz = max(max_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
-	    max_pixclk_khz = max(max_pixclk_khz, edid_cea_modes[vic - 1].pixclk_khz);
+	    max_pixclk_khz = max(max_pixclk_khz,
+				 edid_cea_modes[vic - 1].pixclk_khz / (for_ycbcr420 ? 2 : 1));
 	} else {
 	    mode = "Unknown mode";
 	}
@@ -1078,7 +1079,7 @@ cea_video_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
-    cea_svd(x + 1, length);
+    cea_svd(x + 1, length, 0);
 }
 
 static void
@@ -1086,7 +1087,7 @@ cea_y420vdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
-    cea_svd(x + 2, length - 1);
+    cea_svd(x + 2, length - 1, 1);
 }
 
 static void
