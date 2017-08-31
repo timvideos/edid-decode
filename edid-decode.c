@@ -68,6 +68,7 @@ static int seen_non_detailed_descriptor = 0;
 static int warning_excessive_dotclock_correction = 0;
 static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
+static int nonconformant_srgb_chromaticity = 0;
 
 static int conformant = 1;
 
@@ -1822,6 +1823,7 @@ int main(int argc, char **argv)
     time_t the_time;
     struct tm *ptm;
     int analog, i;
+    unsigned col_x, col_y;
 
     switch (argc) {
 	case 1:
@@ -2021,8 +2023,21 @@ int main(int argc, char **argv)
 	printf("\n");
     }
 
-    if (edid[0x18] & 0x04)
+    if (edid[0x18] & 0x04) {
+	/*
+	 * The sRGB chromaticities are (x, y):
+	 * red:   0.640,  0.330
+	 * green: 0.300,  0.600
+	 * blue:  0.150,  0.060
+	 * white: 0.3127, 0.3290
+	 */
+	static const unsigned char srgb_chromaticity[10] = {
+	    0xee, 0x91, 0xa3, 0x54, 0x4c, 0x99, 0x26, 0x0f, 0x50, 0x54
+	};
 	printf("Default (sRGB) color space is primary color space\n");
+	nonconformant_srgb_chromaticity =
+	    memcmp(edid + 0x19, srgb_chromaticity, sizeof(srgb_chromaticity));
+    }
     if (edid[0x18] & 0x02) {
 	printf("First detailed timing is preferred timing\n");
 	has_preferred_timing = 1;
@@ -2030,7 +2045,23 @@ int main(int argc, char **argv)
     if (edid[0x18] & 0x01)
 	printf("Supports GTF timings within operating range\n");
 
-    /* XXX color section */
+    printf("Display x,y Chromaticity:\n");
+    col_x = (edid[0x1b] << 2) | (edid[0x19] >> 6);
+    col_y = (edid[0x1c] << 2) | ((edid[0x19] >> 4) & 3);
+    printf("  Red:   0.%04u, 0.%04u\n",
+	   (col_x * 10000) / 1024, (col_y * 10000) / 1024);
+    col_x = (edid[0x1d] << 2) | ((edid[0x19] >> 2) & 3);
+    col_y = (edid[0x1e] << 2) | (edid[0x19] & 3);
+    printf("  Green: 0.%04u, 0.%04u\n",
+	   (col_x * 10000) / 1024, (col_y * 10000) / 1024);
+    col_x = (edid[0x1f] << 2) | (edid[0x1a] >> 6);
+    col_y = (edid[0x20] << 2) | ((edid[0x1a] >> 4) & 3);
+    printf("  Blue:  0.%04u, 0.%04u\n",
+	   (col_x * 10000) / 1024, (col_y * 10000) / 1024);
+    col_x = (edid[0x21] << 2) | ((edid[0x1a] >> 2) & 3);
+    col_y = (edid[0x22] << 2) | (edid[0x1a] & 3);
+    printf("  White: 0.%04u, 0.%04u\n",
+	   (col_x * 10000) / 1024, (col_y * 10000) / 1024);
 
     printf("Established timings supported:\n");
     for (i = 0; i < 17; i++) {
@@ -2097,6 +2128,7 @@ int main(int argc, char **argv)
     if (claims_one_point_three) {
 	if (nonconformant_digital_display ||
 	    nonconformant_hf_vsdb_position ||
+	    nonconformant_srgb_chromaticity ||
 	    !has_valid_string_termination ||
 	    !has_valid_descriptor_pad ||
 	    !has_name_descriptor ||
@@ -2106,6 +2138,8 @@ int main(int argc, char **argv)
 	    conformant = 0;
 	if (!conformant)
 	    printf("EDID block does NOT conform to EDID 1.3!\n");
+	if (nonconformant_srgb_chromaticity)
+	    printf("\tsRGB is signaled, but the chromaticities do not match\n");
 	if (nonconformant_digital_display)
 	    printf("\tDigital display field contains garbage: %x\n",
 		   nonconformant_digital_display);
