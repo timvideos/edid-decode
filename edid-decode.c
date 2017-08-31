@@ -227,6 +227,47 @@ detailed_cvt_descriptor(unsigned char *x, int first)
     return valid;
 }
 
+static void print_standard_timing(uint8_t b1, uint8_t b2)
+{
+    const char *ratio;
+    unsigned int x, y, refresh;
+
+    if (b1 == 0x01 && b2 == 0x01)
+      return;
+
+    if (b1 == 0) {
+      printf("non-conformant standard timing (0 horiz)\n");
+      return;
+    }
+    x = (b1 + 31) * 8;
+    switch ((b2 >> 6) & 0x3) {
+    case 0x00:
+      if (claims_one_point_three) {
+        y = x * 10 / 16;
+        ratio = "16:10";
+      } else {
+        y = x;
+        ratio = "1:1";
+      }
+      break;
+    case 0x01:
+      y = x * 3 / 4;
+      ratio = "4:3";
+      break;
+    case 0x02:
+      y = x * 4 / 5;
+      ratio = "5:4";
+      break;
+    case 0x03:
+      y = x * 9 / 16;
+      ratio = "16:9";
+      break;
+    }
+    refresh = 60 + (b2 & 0x3f);
+
+    printf("  %dx%d@%dHz %s\n", x, y, refresh, ratio);
+}
+
 /* extract a string from a detailed subblock, checking for termination */
 static char *
 extract_string(unsigned char *x, int *valid_termination, int len)
@@ -329,8 +370,9 @@ detailed_block(unsigned char *x, int in_extension)
 	    printf("Color management data\n");
 	    return 1;
 	case 0xFA:
-	    /* TODO */
-	    printf("More standard timings\n");
+	    printf("More standard timings:\n");
+	    for (i = 0; i < 6; i++)
+		print_standard_timing(x[5 + i * 2], x[5 + i * 2 + 1]);
 	    return 1;
 	case 0xFB:
 	    /* TODO */
@@ -2100,46 +2142,8 @@ int main(int argc, char **argv)
     has_640x480p60_est_timing = edid[0x23] & 0x20;
 
     printf("Standard timings supported:\n");
-    for (i = 0; i < 8; i++) {
-      const char *ratio;
-      uint8_t b1 = edid[0x26 + i * 2], b2 = edid[0x26 + i * 2 + 1];
-      unsigned int x, y, refresh;
-
-      if (b1 == 0x01 && b2 == 0x01)
-	continue;
-
-      if (b1 == 0) {
-	printf("non-conformant standard timing (0 horiz)\n");
-	continue;
-      }
-      x = (b1 + 31) * 8;
-      switch ((b2 >> 6) & 0x3) {
-      case 0x00:
-	if (claims_one_point_three) {
-	  y = x * 10 / 16;
-	  ratio = "16:10";
-	} else {
-	  y = x;
-	  ratio = "1:1";
-	}
-	break;
-      case 0x01:
-	y = x * 3 / 4;
-	ratio = "4:3";
-	break;
-      case 0x02:
-	y = x * 4 / 5;
-	ratio = "5:4";
-	break;
-      case 0x03:
-	y = x * 9 / 16;
-	ratio = "16:9";
-	break;
-      }
-      refresh = 60 + (b2 & 0x3f);
-
-      printf("  %dx%d@%dHz %s\n", x, y, refresh, ratio);
-    }
+    for (i = 0; i < 8; i++)
+      print_standard_timing(edid[0x26 + i * 2], edid[0x26 + i * 2 + 1]);
 
     /* detailed timings */
     has_valid_detailed_blocks = detailed_block(edid + 0x36, 0);
