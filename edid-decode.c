@@ -2192,7 +2192,7 @@ int main(int argc, char **argv)
 	    if (edid[0x10] == 0xff) {
 		has_valid_year = 1;
 		printf("Model year %hd\n", edid[0x11] + 1990);
-	    } else if (edid[0x11] + 90 <= ptm->tm_year) {
+	    } else if (edid[0x11] + 90 <= ptm->tm_year + 1) {
 		has_valid_year = 1;
 		if (edid[0x10])
 			printf("Made in week %hd of %hd\n", edid[0x10], edid[0x11] + 1990);
