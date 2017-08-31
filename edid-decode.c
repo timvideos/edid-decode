@@ -177,6 +177,138 @@ static char *manufacturer_name(unsigned char *x)
     return name;
 }
 
+/*
+ * Copied from xserver/hw/xfree86/modes/xf86cvt.c
+ */
+static void edid_cvt_mode(int HDisplay, int VDisplay,
+			  int VRefresh, int Reduced,
+			  unsigned *MinHFreq, unsigned *MaxHFreq,
+			  unsigned *MaxClock)
+{
+    /* 1) top/bottom margin size (% of height) - default: 1.8 */
+#define CVT_MARGIN_PERCENTAGE 1.8
+
+    /* 2) character cell horizontal granularity (pixels) - default 8 */
+#define CVT_H_GRANULARITY 8
+
+    /* 4) Minimum vertical porch (lines) - default 3 */
+#define CVT_MIN_V_PORCH 3
+
+    /* 4) Minimum number of vertical back porch lines - default 6 */
+#define CVT_MIN_V_BPORCH 6
+
+    /* Pixel Clock step (kHz) */
+#define CVT_CLOCK_STEP 250
+
+    float HPeriod;
+    unsigned HTotal, Clock, HorFreq;
+    int VSync;
+
+    /* 2. Horizontal pixels */
+    HDisplay = HDisplay - (HDisplay % CVT_H_GRANULARITY);
+
+    /* Determine VSync Width from aspect ratio */
+    if (!(VDisplay % 3) && ((VDisplay * 4 / 3) == HDisplay))
+        VSync = 4;
+    else if (!(VDisplay % 9) && ((VDisplay * 16 / 9) == HDisplay))
+        VSync = 5;
+    else if (!(VDisplay % 10) && ((VDisplay * 16 / 10) == HDisplay))
+        VSync = 6;
+    else if (!(VDisplay % 4) && ((VDisplay * 5 / 4) == HDisplay))
+        VSync = 7;
+    else if (!(VDisplay % 9) && ((VDisplay * 15 / 9) == HDisplay))
+        VSync = 7;
+    else                        /* Custom */
+        VSync = 10;
+
+    if (!Reduced) {             /* simplified GTF calculation */
+
+        /* 4) Minimum time of vertical sync + back porch interval (µs)
+         * default 550.0 */
+#define CVT_MIN_VSYNC_BP 550.0
+
+        /* 3) Nominal HSync width (% of line period) - default 8 */
+#define CVT_HSYNC_PERCENTAGE 8
+
+        float HBlankPercentage;
+        int HBlank;
+
+        /* 8. Estimated Horizontal period */
+        HPeriod = ((float) (1000000.0 / VRefresh - CVT_MIN_VSYNC_BP)) /
+            (VDisplay + CVT_MIN_V_PORCH);
+
+        /* 5) Definition of Horizontal blanking time limitation */
+        /* Gradient (%/kHz) - default 600 */
+#define CVT_M_FACTOR 600
+
+        /* Offset (%) - default 40 */
+#define CVT_C_FACTOR 40
+
+        /* Blanking time scaling factor - default 128 */
+#define CVT_K_FACTOR 128
+
+        /* Scaling factor weighting - default 20 */
+#define CVT_J_FACTOR 20
+
+#define CVT_M_PRIME CVT_M_FACTOR * CVT_K_FACTOR / 256
+#define CVT_C_PRIME (CVT_C_FACTOR - CVT_J_FACTOR) * CVT_K_FACTOR / 256 + \
+        CVT_J_FACTOR
+
+        /* 12. Find ideal blanking duty cycle from formula */
+        HBlankPercentage = CVT_C_PRIME - CVT_M_PRIME * HPeriod / 1000.0;
+
+        /* 13. Blanking time */
+        if (HBlankPercentage < 20)
+            HBlankPercentage = 20;
+
+        HBlank = HDisplay * HBlankPercentage / (100.0 - HBlankPercentage);
+        HBlank -= HBlank % (2 * CVT_H_GRANULARITY);
+
+        /* 14. Find total number of pixels in a line. */
+        HTotal = HDisplay + HBlank;
+    }
+    else {                      /* Reduced blanking */
+        /* Minimum vertical blanking interval time (µs) - default 460 */
+#define CVT_RB_MIN_VBLANK 460.0
+
+        /* Fixed number of clocks for horizontal sync */
+#define CVT_RB_H_SYNC 32.0
+
+        /* Fixed number of clocks for horizontal blanking */
+#define CVT_RB_H_BLANK 160.0
+
+        /* Fixed number of lines for vertical front porch - default 3 */
+#define CVT_RB_VFPORCH 3
+
+        int VBILines;
+
+        /* 8. Estimate Horizontal period. */
+        HPeriod = ((float) (1000000.0 / VRefresh - CVT_RB_MIN_VBLANK)) / VDisplay;
+
+        /* 9. Find number of lines in vertical blanking */
+        VBILines = ((float) CVT_RB_MIN_VBLANK) / HPeriod + 1;
+
+        /* 10. Check if vertical blanking is sufficient */
+        if (VBILines < (CVT_RB_VFPORCH + VSync + CVT_MIN_V_BPORCH))
+            VBILines = CVT_RB_VFPORCH + VSync + CVT_MIN_V_BPORCH;
+
+        /* 12. Find total number of pixels in a line */
+        HTotal = HDisplay + CVT_RB_H_BLANK;
+    }
+
+    /* 15/13. Find pixel clock frequency (kHz for xf86) */
+    Clock = HTotal * 1000.0 / HPeriod;
+    Clock -= Clock % CVT_CLOCK_STEP;
+    HorFreq = (Clock * 1000) / HTotal;
+
+    *MinHFreq = min(*MinHFreq, HorFreq);
+    *MaxHFreq = max(*MaxHFreq, HorFreq);
+    *MaxClock = max(*MaxClock, Clock);
+    min_hor_freq_hz = min(min_hor_freq_hz, HorFreq);
+    max_hor_freq_hz = max(max_hor_freq_hz, HorFreq);
+    max_pixclk_khz = max(max_pixclk_khz, Clock);
+}
+
 static int
 detailed_cvt_descriptor(unsigned char *x, int first)
 {
@@ -198,19 +330,19 @@ detailed_cvt_descriptor(unsigned char *x, int first)
 
     switch (x[1] & 0x0c) {
     case 0x00:
-	width = (height * 4) / 3;
+	width = 8 * (((height * 4) / 3) / 8);
 	ratio = "4:3";
 	break;
     case 0x04:
-	width = (height * 16) / 9;
+	width = 8 * (((height * 16) / 9) / 8);
 	ratio = "16:9";
 	break;
     case 0x08:
-	width = (height * 16) / 10;
+	width = 8 * (((height * 16) / 10) / 8);
 	ratio = "16:10";
 	break;
     case 0x0c:
-	width = (height * 15) / 9;
+	width = 8 * (((height * 15) / 9) / 8);
 	ratio = "15:9";
 	break;
     }
@@ -234,7 +366,31 @@ detailed_cvt_descriptor(unsigned char *x, int first)
     if (!valid) {
 	printf("    (broken)\n");
     } else {
-	printf("    %dx%d @ ( %s%s%s%s%s) Hz %s (%s%s preferred)\n", width, height,
+        unsigned min_hfreq = ~0;
+        unsigned max_hfreq = 0;
+	unsigned max_clock = 0;
+
+	min_vert_freq_hz = min(min_vert_freq_hz, min_refresh);
+	max_vert_freq_hz = max(max_vert_freq_hz, max_refresh);
+
+	if (fifty)
+		edid_cvt_mode(width, height, 50, 0,
+			      &min_hfreq, &max_hfreq, &max_clock);
+	if (sixty)
+		edid_cvt_mode(width, height, 60, 0,
+			      &min_hfreq, &max_hfreq, &max_clock);
+	if (seventyfive)
+		edid_cvt_mode(width, height, 75, 0,
+			      &min_hfreq, &max_hfreq, &max_clock);
+	if (eightyfive)
+		edid_cvt_mode(width, height, 75, 0,
+			      &min_hfreq, &max_hfreq, &max_clock);
+	if (reduced)
+		edid_cvt_mode(width, height, 60, 1,
+			      &min_hfreq, &max_hfreq, &max_clock);
+
+	printf("    %dx%d @ ( %s%s%s%s%s) Hz %s (%s%s preferred) HorFreq: %d-%d Hz MaxClock: %.3f MHz\n",
+	        width, height,
 		fifty ? "50 " : "",
 		sixty ? "60 " : "",
 		seventyfive ? "75 " : "",
@@ -242,13 +398,8 @@ detailed_cvt_descriptor(unsigned char *x, int first)
 		reduced ? "60RB " : "",
 		ratio,
 		names[(x[2] & 0x60) >> 5],
-		(((x[2] & 0x60) == 0x20) && reduced) ? "RB" : "");
-	min_vert_freq_hz = min(min_vert_freq_hz, min_refresh);
-	max_vert_freq_hz = max(max_vert_freq_hz, max_refresh);
-	/* TODO
-	min_hor_freq_hz = min(min_hor_freq_hz, established_timings3[i].hor_freq_hz);
-	max_hor_freq_hz = max(max_hor_freq_hz, established_timings3[i].hor_freq_hz);
-	max_pixclk_khz = max(max_pixclk_khz, established_timings3[i].pixclk_khz);*/
+		(((x[2] & 0x60) == 0x20) && reduced) ? "RB" : "",
+		min_hfreq, max_hfreq, max_clock / 1000000.0);
     }
 
     return valid;
@@ -413,7 +564,6 @@ static void print_standard_timing(uint8_t b1, uint8_t b2)
     }
     refresh = 60 + (b2 & 0x3f);
 
-    printf("  %dx%d@%dHz %d:%d\n", x, y, refresh, ratio_w, ratio_h);
     min_vert_freq_hz = min(min_vert_freq_hz, refresh);
     max_vert_freq_hz = max(max_vert_freq_hz, refresh);
     for (i = 0; i < ARRAY_SIZE(established_timings); i++) {
@@ -440,10 +590,17 @@ static void print_standard_timing(uint8_t b1, uint8_t b2)
 		    }
 	    }
     }
+    /* TODO: this should also check DMT timings and GTF/CVT */
     if (pixclk_khz) {
       min_hor_freq_hz = min(min_hor_freq_hz, hor_freq_hz);
       max_hor_freq_hz = max(max_hor_freq_hz, hor_freq_hz);
       max_pixclk_khz = max(max_pixclk_khz, pixclk_khz);
+      printf("  %dx%d@%dHz %d:%d HorFreq: %d Hz Clock: %.3f MHz\n",
+	     x, y, refresh, ratio_w, ratio_h,
+	     hor_freq_hz, pixclk_khz / 1000.0);
+    } else {
+      printf("  %dx%d@%dHz %d:%d\n",
+	     x, y, refresh, ratio_w, ratio_h);
     }
 }
 
@@ -500,10 +657,13 @@ detailed_block(unsigned char *x, int in_extension)
 	    printf("Established timings III:\n");
 	    for (i = 0; i < 44; i++) {
 	      if (x[6 + i / 8] & (1 << (7 - i % 8))) {
-		printf("  %dx%d@%dHz %s%u:%u\n", established_timings3[i].x,
+		printf("  %dx%d@%dHz %s%u:%u HorFreq: %d Hz Clock: %.3f MHz\n",
+		       established_timings3[i].x,
 		       established_timings3[i].y, established_timings3[i].refresh,
 		       established_timings3[i].rb ? "RB " : "",
-		       established_timings3[i].ratio_w, established_timings3[i].ratio_h);
+		       established_timings3[i].ratio_w, established_timings3[i].ratio_h,
+		       established_timings3[i].hor_freq_hz,
+		       established_timings3[i].pixclk_khz / 1000.0);
 		min_vert_freq_hz = min(min_vert_freq_hz, established_timings3[i].refresh);
 		max_vert_freq_hz = max(max_vert_freq_hz, established_timings3[i].refresh);
 		min_hor_freq_hz = min(min_hor_freq_hz, established_timings3[i].hor_freq_hz);
@@ -813,14 +973,15 @@ detailed_block(unsigned char *x, int in_extension)
     printf("Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
 	   "               %4d %4d %4d %4d hborder %d\n"
 	   "               %4d %4d %4d %4d vborder %d\n"
-	   "               %chsync %cvsync%s%s %s\n",
+	   "               %chsync %cvsync%s%s %s\n"
+	   "               VertFreq: %d Hz, HorFreq: %d Hz\n",
 	    pixclk_khz / 1000.0,
 	    (x[12] + ((x[14] & 0xF0) << 4)),
 	    (x[13] + ((x[14] & 0x0F) << 8)),
 	   ha, ha + hso, ha + hso + hspw, ha + hbl, hborder,
 	   va, va + vso, va + vso + vspw, va + vbl, vborder,
 	   phsync, pvsync, syncmethod, x[17] & 0x80 ? " interlaced" : "",
-	   stereo
+	   stereo, refresh, (pixclk_khz * 1000) / (ha + hbl)
 	  );
     min_vert_freq_hz = min(min_vert_freq_hz, refresh);
     max_vert_freq_hz = max(max_vert_freq_hz, refresh);
@@ -1048,6 +1209,8 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 	unsigned char native;
 	unsigned char vic;
 	const char *mode;
+	unsigned hfreq = 0;
+	unsigned clock_khz = 0;
 
 	if ((svd & 0x7f) == 0)
 	    continue;
@@ -1078,15 +1241,17 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 	    mode = edid_cea_modes[vic - 1].name;
 	    min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
 	    max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
-	    min_hor_freq_hz = min(min_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
-	    max_hor_freq_hz = max(max_hor_freq_hz, edid_cea_modes[vic - 1].hor_freq_hz);
-	    max_pixclk_khz = max(max_pixclk_khz,
-				 edid_cea_modes[vic - 1].pixclk_khz / (for_ycbcr420 ? 2 : 1));
+	    hfreq = edid_cea_modes[vic - 1].hor_freq_hz;
+	    min_hor_freq_hz = min(min_hor_freq_hz, hfreq);
+	    max_hor_freq_hz = max(max_hor_freq_hz, hfreq);
+	    clock_khz = edid_cea_modes[vic - 1].pixclk_khz / (for_ycbcr420 ? 2 : 1);
+	    max_pixclk_khz = max(max_pixclk_khz, clock_khz);
 	} else {
 	    mode = "Unknown mode";
 	}
 
-	printf("    VIC %3d %s %s\n", vic, mode, native ? "(native)" : "");
+	printf("    VIC %3d %s %s HorFreq: %d Hz Clock: %.3f MHz\n",
+	       vic, mode, native ? "(native)" : "", hfreq, clock_khz / 1000.0);
 	if (vic == 1)
 		has_cea861_vic_1 = 1;
     }
@@ -1243,6 +1408,8 @@ cea_hdmi_block(unsigned char *x)
 	    b += 2;
 
 	    if (len_vic) {
+		unsigned hfreq = 0;
+		unsigned clock_khz = 0;
 		int i;
 
 		for (i = 0; i < len_vic; i++) {
@@ -1254,14 +1421,17 @@ cea_hdmi_block(unsigned char *x)
 			mode = edid_hdmi_modes[vic - 1].name;
 			min_vert_freq_hz = min(min_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
 			max_vert_freq_hz = max(max_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
-			min_hor_freq_hz = min(min_hor_freq_hz, edid_hdmi_modes[vic - 1].hor_freq_hz);
-			max_hor_freq_hz = max(max_hor_freq_hz, edid_hdmi_modes[vic - 1].hor_freq_hz);
-			max_pixclk_khz = max(max_pixclk_khz, edid_hdmi_modes[vic - 1].pixclk_khz);
+			hfreq = edid_hdmi_modes[vic - 1].hor_freq_hz;
+			min_hor_freq_hz = min(min_hor_freq_hz, hfreq);
+			max_hor_freq_hz = max(max_hor_freq_hz, hfreq);
+			clock_khz = edid_hdmi_modes[vic - 1].pixclk_khz;
+			max_pixclk_khz = max(max_pixclk_khz, clock_khz);
 		    } else {
 			mode = "Unknown mode";
 		    }
 
-		    printf("      HDMI VIC %d %s\n", vic, mode);
+		    printf("      HDMI VIC %d %s HorFreq: %d Hz Clock: %.3f MHz\n",
+			   vic, mode, hfreq, clock_khz / 1000.0);
                 }
 
 		b += len_vic;
@@ -2390,16 +2560,18 @@ int main(int argc, char **argv)
     printf("Established timings supported:\n");
     for (i = 0; i < 17; i++) {
       if (edid[0x23 + i / 8] & (1 << (7 - i % 8))) {
-	printf("  %dx%d%s@%dHz %u:%u\n",
-	       established_timings[i].x, established_timings[i].y,
-	       established_timings[i].interlaced ? "i" : "",
-	       established_timings[i].refresh,
-	       established_timings[i].ratio_w, established_timings[i].ratio_h);
 	min_vert_freq_hz = min(min_vert_freq_hz, established_timings[i].refresh);
 	max_vert_freq_hz = max(max_vert_freq_hz, established_timings[i].refresh);
 	min_hor_freq_hz = min(min_hor_freq_hz, established_timings[i].hor_freq_hz);
 	max_hor_freq_hz = max(max_hor_freq_hz, established_timings[i].hor_freq_hz);
 	max_pixclk_khz = max(max_pixclk_khz, established_timings[i].pixclk_khz);
+	printf("  %dx%d%s@%dHz %u:%u HorFreq: %d Hz Clock: %.3f MHz\n",
+	       established_timings[i].x, established_timings[i].y,
+	       established_timings[i].interlaced ? "i" : "",
+	       established_timings[i].refresh,
+	       established_timings[i].ratio_w, established_timings[i].ratio_h,
+	       established_timings[i].hor_freq_hz,
+	       established_timings[i].pixclk_khz / 1000.0);
       }
     }
     has_640x480p60_est_timing = edid[0x23] & 0x20;
@@ -2489,7 +2661,7 @@ int main(int argc, char **argv)
 	    printf("\tHas descriptor blocks other than detailed timings\n");
     }
 
-    if (has_valid_range_descriptor &&
+    if (has_range_descriptor && has_valid_range_descriptor &&
 	(min_vert_freq_hz < mon_min_vert_freq_hz ||
 	 max_vert_freq_hz > mon_max_vert_freq_hz ||
 	 min_hor_freq_hz < mon_min_hor_freq_hz ||
