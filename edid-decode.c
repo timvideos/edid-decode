@@ -54,6 +54,8 @@ static int has_valid_cea_checksum = 1;
 static int has_valid_displayid_checksum = 1;
 static int has_valid_cvt = 1;
 static int has_valid_dummy_block = 1;
+static int has_valid_serial_number = 0;
+static int has_valid_serial_string = 0;
 static int has_valid_week = 0;
 static int has_valid_year = 0;
 static int has_valid_detailed_blocks = 0;
@@ -62,6 +64,7 @@ static int has_valid_descriptor_pad = 1;
 static int has_valid_range_descriptor = 1;
 static int has_valid_max_dotclock = 1;
 static int has_valid_string_termination = 1;
+static int has_cea861 = 0;
 static int manufacturer_name_well_formed = 0;
 static int seen_non_detailed_descriptor = 0;
 
@@ -500,6 +503,7 @@ detailed_block(unsigned char *x, int in_extension)
 	case 0xFF:
 	    printf("Serial number: %s\n",
 		   extract_string(x + 5, &has_valid_string_termination, 13));
+	    has_valid_serial_string = 1;
 	    return 1;
 	default:
 	    printf("Unknown monitor description type %d\n", x[3]);
@@ -1342,6 +1346,7 @@ parse_cea(unsigned char *x)
     } while (0);
 
     has_valid_cea_checksum = do_checksum(x, EDID_PAGE_SIZE);
+    has_cea861 = 1;
 
     return ret;
 }
@@ -1887,6 +1892,7 @@ int main(int argc, char **argv)
 	    (unsigned short)(edid[0x0A] + (edid[0x0B] << 8)),
 	    (unsigned int)(edid[0x0C] + (edid[0x0D] << 8)
 			   + (edid[0x0E] << 16) + (edid[0x0F] << 24)));
+    has_valid_serial_number = edid[0x0C] || edid[0x0D] || edid[0x0E] || edid[0x0F];
     /* XXX need manufacturer ID table */
 
     time(&the_time);
@@ -2200,6 +2206,7 @@ int main(int argc, char **argv)
 	!has_valid_cvt ||
 	!has_valid_year ||
 	!has_valid_week ||
+	(has_cea861 && has_valid_serial_number && has_valid_serial_string) ||
 	!has_valid_detailed_blocks ||
 	!has_valid_dummy_block ||
 	!has_valid_descriptor_ordering ||
@@ -2218,6 +2225,8 @@ int main(int argc, char **argv)
 	    printf("\tBad year of manufacture\n");
 	if (!has_valid_week)
 	    printf("\tBad week of manufacture\n");
+	if (has_cea861 && has_valid_serial_number && has_valid_serial_string)
+	    printf("\tBoth the serial number and the serial string are set\n");
 	if (!has_valid_detailed_blocks)
 	    printf("\tDetailed blocks filled with garbage\n");
 	if (!has_valid_dummy_block)
