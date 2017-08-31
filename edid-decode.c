@@ -65,6 +65,8 @@ static int has_valid_range_descriptor = 1;
 static int has_valid_max_dotclock = 1;
 static int has_valid_string_termination = 1;
 static int has_cea861 = 0;
+static int has_640x480p60_est_timing = 0;
+static int has_cea861_vic_1 = 0;
 static int manufacturer_name_well_formed = 0;
 static int seen_non_detailed_descriptor = 0;
 
@@ -72,6 +74,7 @@ static int warning_excessive_dotclock_correction = 0;
 static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
 static int nonconformant_srgb_chromaticity = 0;
+static int nonconformant_cea861_640x480 = 0;
 
 static int conformant = 1;
 
@@ -803,6 +806,8 @@ cea_svd(unsigned char *x, int n)
 	    mode = "Unknown mode";
 
 	printf("    VIC %3d %s %s\n", vic, mode, native ? "(native)" : "");
+	if (vic == 1)
+		has_cea861_vic_1 = 1;
     }
 }
 
@@ -1347,6 +1352,7 @@ parse_cea(unsigned char *x)
 
     has_valid_cea_checksum = do_checksum(x, EDID_PAGE_SIZE);
     has_cea861 = 1;
+    nonconformant_cea861_640x480 = !has_cea861_vic_1 && !has_640x480p60_est_timing;
 
     return ret;
 }
@@ -2087,6 +2093,7 @@ int main(int argc, char **argv)
 	       established_timings[i].ratio_w, established_timings[i].ratio_h);
       }
     }
+    has_640x480p60_est_timing = edid[0x23] & 0x20;
 
     printf("Standard timings supported:\n");
     for (i = 0; i < 8; i++) {
@@ -2153,6 +2160,7 @@ int main(int argc, char **argv)
 	if (nonconformant_digital_display ||
 	    nonconformant_hf_vsdb_position ||
 	    nonconformant_srgb_chromaticity ||
+	    nonconformant_cea861_640x480 ||
 	    !has_valid_string_termination ||
 	    !has_valid_descriptor_pad ||
 	    !has_name_descriptor ||
@@ -2167,6 +2175,9 @@ int main(int argc, char **argv)
 	if (nonconformant_digital_display)
 	    printf("\tDigital display field contains garbage: %x\n",
 		   nonconformant_digital_display);
+	if (nonconformant_cea861_640x480)
+	    printf("\tRequired 640x480p60 timings are missing in the established timings\n"
+		   "\tand/or in the SVD list (VIC 1)\n");
 	if (nonconformant_hf_vsdb_position)
 	    printf("\tHDMI Forum VSDB did not immediately follow the HDMI VSDB\n");
 	if (!has_name_descriptor)
