@@ -1976,7 +1976,7 @@ extract_edid(int fd)
     }
 
     /* Is the EDID provided in hex? */
-    for (i = 0; i < 32 && (isspace(ret[i]) || tolower(ret[i]) == 'x' || isxdigit(ret[i])); i++);
+    for (i = 0; i < 32 && (isspace(ret[i]) || ret[i] == ',' || tolower(ret[i]) == 'x' || isxdigit(ret[i])); i++);
     if (i == 32) {
 	out = malloc(size >> 1);
 	if (out == NULL) {
