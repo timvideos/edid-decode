@@ -2153,8 +2153,8 @@ int main(int argc, char **argv)
     dump_breakdown(edid);
 
     if (!edid || memcmp(edid, "\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00", 8)) {
-	printf("No header found\n");
-	// return 1;
+	fprintf(stderr, "No header found\n");
+	return 1;
     }
 
     printf("EDID version: %hd.%hd\n", edid[0x12], edid[0x13]);
