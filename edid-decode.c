@@ -77,6 +77,8 @@ static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
 static int nonconformant_srgb_chromaticity = 0;
 static int nonconformant_cea861_640x480 = 0;
+static int nonconformant_hdmi_vsdb_tmds_rate = 0;
+static int nonconformant_hf_vsdb_tmds_rate = 0;
 
 static int min_hor_freq_hz = 0xfffffff;
 static int max_hor_freq_hz = 0;
@@ -1171,8 +1173,11 @@ cea_hdmi_block(unsigned char *x)
 	    printf("    DVI_Dual\n");
     }
 
-    if (length > 6)
+    if (length > 6) {
 	printf("    Maximum TMDS clock: %dMHz\n", x[7] * 5);
+	if (x[7] * 5 > 340)
+		nonconformant_hdmi_vsdb_tmds_rate = 1;
+    }
 
     /* XXX the walk here is really ugly, and needs to be length-checked */
     if (length > 7) {
@@ -1328,8 +1333,13 @@ cea_hf_block(unsigned char *x)
 {
     printf(" (HDMI Forum)\n");
     printf("    Version: %u\n", x[4]);
-    if (x[5])
-	    printf("    Maximum TMDS Character Rate: %uMHz\n", x[5] * 5);
+    if (x[5]) {
+	    unsigned rate = x[5] * 5;
+
+	    printf("    Maximum TMDS Character Rate: %uMHz\n", rate);
+	    if ((rate && rate <= 340) || rate > 600)
+		    nonconformant_hf_vsdb_tmds_rate = 1;
+    }
     if (x[6] & 0x80)
 	    printf("    SCDC Present\n");
     if (x[6] & 0x40)
@@ -2404,6 +2414,8 @@ int main(int argc, char **argv)
     if (claims_one_point_three) {
 	if (nonconformant_digital_display ||
 	    nonconformant_hf_vsdb_position ||
+	    nonconformant_hdmi_vsdb_tmds_rate ||
+	    nonconformant_hf_vsdb_tmds_rate ||
 	    nonconformant_srgb_chromaticity ||
 	    nonconformant_cea861_640x480 ||
 	    !has_valid_string_termination ||
@@ -2425,6 +2437,10 @@ int main(int argc, char **argv)
 		   "\tand/or in the SVD list (VIC 1)\n");
 	if (nonconformant_hf_vsdb_position)
 	    printf("\tHDMI Forum VSDB did not immediately follow the HDMI VSDB\n");
+	if (nonconformant_hdmi_vsdb_tmds_rate)
+	    printf("\tHDMI VSDB Max TMDS rate is > 340\n");
+	if (nonconformant_hf_vsdb_tmds_rate)
+	    printf("\tHDMI Forum VSDB Max TMDS rate is > 0 and <= 340 or > 600\n");
 	if (!has_name_descriptor)
 	    printf("\tMissing name descriptor\n");
 	else if (!name_descriptor_terminated)
