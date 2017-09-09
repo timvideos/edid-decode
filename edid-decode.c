@@ -1018,6 +1018,24 @@ do_checksum(unsigned char *x, size_t len)
 /* CEA extension */
 
 static const char *
+audio_ext_format(unsigned char x)
+{
+    switch (x) {
+    case 4: return "MPEG-4 HE AAC";
+    case 5: return "MPEG-4 HE AAC v2";
+    case 6: return "MPEG-4 AAC LC";
+    case 7: return "DRA";
+    case 8: return "MPEG-4 HE AAC + MPEG Surround";
+    case 10: return "MPEG-4 AAC + MPEG Surround";
+    case 11: return "MPEG-H 3D Audio";
+    case 12: return "AC-4";
+    case 13: return "L-PCM 3D Audio";
+    default: return "RESERVED";
+    }
+    return "BROKEN"; /* can't happen */
+}
+
+static const char *
 audio_format(unsigned char x)
 {
     switch (x) {
@@ -1044,7 +1062,7 @@ audio_format(unsigned char x)
 static void
 cea_audio_block(unsigned char *x)
 {
-    int i, format;
+    int i, format, ext_format = 0;
     int length = x[0] & 0x1f;
 
     if (length % 3) {
@@ -1055,9 +1073,18 @@ cea_audio_block(unsigned char *x)
 
     for (i = 1; i < length; i += 3) {
 	format = (x[i] & 0x78) >> 3;
-	printf("    %s, max channels %d\n", audio_format(format),
-	       (x[i] & 0x07)+1);
-	printf("    Supported sample rates (kHz):%s%s%s%s%s%s%s\n",
+	ext_format = (x[i + 2] & 0xf8) >> 3;
+	if (format != 15)
+	    printf("    %s, max channels %d\n", audio_format(format),
+		   (x[i] & 0x07)+1);
+	else if (ext_format == 13)
+	    printf("    %s, max channels %d\n", audio_ext_format(ext_format),
+		   (((x[i + 1] & 0x80) >> 3) | ((x[i] & 0x80) >> 4) |
+		    (x[i] & 0x07))+1);
+	else
+	    printf("    %s, max channels %d\n", audio_ext_format(ext_format),
+		   (x[i] & 0x07)+1);
+	printf("      Supported sample rates (kHz):%s%s%s%s%s%s%s\n",
 	       (x[i+1] & 0x40) ? " 192" : "",
 	       (x[i+1] & 0x20) ? " 176.4" : "",
 	       (x[i+1] & 0x10) ? " 96" : "",
@@ -1065,13 +1092,23 @@ cea_audio_block(unsigned char *x)
 	       (x[i+1] & 0x04) ? " 48" : "",
 	       (x[i+1] & 0x02) ? " 44.1" : "",
 	       (x[i+1] & 0x01) ? " 32" : "");
-	if (format == 1) {
-	    printf("    Supported sample sizes (bits):%s%s%s\n",
+	if (format == 1 || ext_format == 13) {
+	    printf("      Supported sample sizes (bits):%s%s%s\n",
 		  (x[i+2] & 0x04) ? " 24" : "",
 		  (x[i+2] & 0x02) ? " 20" : "",
 		  (x[i+2] & 0x01) ? " 16" : "");
 	} else if (format <= 8) {
-	    printf("    Maximum bit rate: %d kHz\n", x[i+2] * 8);
+	    printf("      Maximum bit rate: %d kHz\n", x[i+2] * 8);
+	} else if (format == 14) {
+	    printf("      Profile: %d\n", x[i+2] & 7);
+	} else if ((ext_format >= 4 && ext_format <= 6) ||
+		   ext_format == 8 || ext_format == 10) {
+	    printf("      AAC audio frame lengths:%s%s\n",
+		   (x[i+2] & 4) ? " 1024_TL" : "",
+		   (x[i+2] & 2) ? " 960_TL" : "");
+	    if (ext_format >= 8 && (x[i+2] & 1))
+		printf("      Supports %s signaled MPEG Surround data\n",
+		       (x[i+2] & 1) ? "implicitly and explicitly" : "only implicitly");
 	}
     }
 }
