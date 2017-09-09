@@ -1614,7 +1614,7 @@ static struct field *vcdb_fields[] = {
     &CE_scan,
 };
 
-static const char *sadb_map[] = {
+static const char *speaker_map[] = {
     "FL/FR - Front Left/Right",
     "LFE - Low Frequency Effects",
     "FC - Front Center",
@@ -1648,10 +1648,108 @@ cea_sadb(unsigned char *x)
 
 	printf("    Speaker map:\n");
 
-	for (i = 0; i < ARRAY_SIZE(sadb_map); i++) {
+	for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
 	    if ((sad >> i) & 1)
-		printf("      %s\n", sadb_map[i]);
+		printf("      %s\n", speaker_map[i]);
 	}
+    }
+}
+
+static float
+decode_uchar_as_float(unsigned char x)
+{
+    signed char s = (signed char)x;
+
+    return s / 64.0;
+}
+
+static void
+cea_rcdb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    uint32_t spm = ((x[5] << 16) | (x[4] << 8) | x[3]);
+    int i;
+
+    if (length < 4)
+	return;
+
+    if (x[2] & 0x40)
+	printf("    Speaker count: %d\n", (x[2] & 0x1f) + 1);
+
+    printf("    Speaker Presence Mask:\n");
+    for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
+	if ((spm >> i) & 1)
+	    printf("      %s\n", speaker_map[i]);
+    }
+    if ((x[2] & 0x20) && length >= 7) {
+	printf("    Xmax: %d dm\n", x[6]);
+	printf("    Ymax: %d dm\n", x[7]);
+	printf("    Zmax: %d dm\n", x[8]);
+    }
+    if ((x[2] & 0x80) && length >= 10) {
+	printf("    DisplayX: %.3f * Xmax\n", decode_uchar_as_float(x[9]));
+	printf("    DisplayY: %.3f * Ymax\n", decode_uchar_as_float(x[10]));
+	printf("    DisplayZ: %.3f * Zmax\n", decode_uchar_as_float(x[11]));
+    }
+}
+
+static const char *speaker_location[] = {
+    "FL - Front Left",
+    "FR - Front Right",
+    "FC - Front Center",
+    "LFE1 - Low Frequency Effects 1",
+    "BL - Back Left",
+    "BR - Back Right",
+    "FLC - Front Left of Center",
+    "FRC - Front Right of Center",
+    "BC - Back Center",
+    "LFE2 - Low Frequency Effects 2",
+    "SiL - Side Left",
+    "SiR - Side Right",
+    "TpFL - Top Front Left",
+    "TpFH - Top Front Right",
+    "TpFC - Top Front Center",
+    "TpC - Top Center",
+    "TpBL - Top Back Left",
+    "TpBR - Top Back Right",
+    "TpSiL - Top Side Left",
+    "TpSiR - Top Side Right",
+    "TpBC - Top Back Center",
+    "BtFC - Bottom Front Center",
+    "BtFL - Bottom Front Left",
+    "BtBR - Bottom Front Right",
+    "FLW - Front Left Wide",
+    "FRW - Front Right Wide",
+    "LS - Left Surround",
+    "RS - Right Surround",
+};
+
+static void
+cea_sldb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+
+    if (!length)
+	return;
+
+    x += 2;
+    length--;
+
+    while (length >= 2) {
+	printf("    Channel: %d (%sactive)\n", x[0] & 0x1f,
+	       (x[0] & 0x20) ? "" : "not ");
+	if ((x[1] & 0x1f) < ARRAY_SIZE(speaker_location))
+	    printf("      Speaker: %s\n", speaker_location[x[1] & 0x1f]);
+	if (length >= 5 && (x[0] & 0x40)) {
+	    printf("      X: %.3f * Xmax\n", decode_uchar_as_float(x[2]));
+	    printf("      Y: %.3f * Ymax\n", decode_uchar_as_float(x[3]));
+	    printf("      Z: %.3f * Zmax\n", decode_uchar_as_float(x[4]));
+	    length -= 3;
+	    x += 3;
+	}
+
+	length -= 2;
+	x += 2;
     }
 }
 
@@ -1811,6 +1909,14 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x12:
 		    printf("HDMI audio data block\n");
+		    break;
+		case 0x13:
+		    printf("Room configuration data block\n");
+		    cea_rcdb(x);
+		    break;
+		case 0x14:
+		    printf("Speaker location data block\n");
+		    cea_sldb(x);
 		    break;
 		case 0x20:
 		    printf("InfoFrame data block\n");
