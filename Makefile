@@ -2,7 +2,7 @@ bindir ?= /usr/bin
 mandir ?= /usr/share/man
 
 edid-decode: edid-decode.c
-	$(CC) $(CFLAGS) -g -Wall -o $@ $<
+	$(CC) $(CFLAGS) -g -Wall -o $@ $< -lm
 
 clean:
 	rm -f edid-decode

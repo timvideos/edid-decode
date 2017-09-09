@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <ctype.h>
+#include <math.h>
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(*(x)))
 #define min(a, b) ((a) < (b) ? (a) : (b))
@@ -1861,10 +1862,11 @@ static const char *eotf_map[] = {
     "Traditional gamma - SDR luminance range",
     "Traditional gamma - HDR luminance range",
     "SMPTE ST2084",
+    "Hybrid Log-Gamma",
 };
 
 static void
-cea_hdr_metadata_block(unsigned char *x)
+cea_hdr_static_metadata_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1885,13 +1887,16 @@ cea_hdr_metadata_block(unsigned char *x)
     }
 
     if (length >= 4)
-	printf("    Desired content max luminance: %d\n", x[4]);
+	printf("    Desired content max luminance: %d (%.3f cd/m^2)\n",
+	       x[4], 50.0 * pow(2, x[4] / 32.0));
 
     if (length >= 5)
-	printf("    Desired content max frame-average luminance: %d\n", x[5]);
+	printf("    Desired content max frame-average luminance: %d (%.3f cd/m^2)\n",
+	       x[5], 50.0 * pow(2, x[5] / 32.0));
 
     if (length >= 6)
-	printf("    Desired content min luminance: %d\n", x[6]);
+	printf("    Desired content min luminance: %d (%.3f cd/m^2)\n",
+	       x[6], (50.0 * pow(2, x[4] / 32.0)) * pow(x[6] / 255.0, 2) / 100.0);
 }
 
 static void
@@ -1958,7 +1963,7 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x06:
 		    printf("HDR static metadata data block\n");
-		    cea_hdr_metadata_block(x);
+		    cea_hdr_static_metadata_block(x);
 		    break;
 		case 0x0d:
 		    printf("Video format preference data block\n");
