@@ -1931,6 +1931,37 @@ cta_hdr_dyn_metadata_block(unsigned char *x)
 }
 
 static void
+cta_ifdb(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int len_hdr = x[2] >> 5;
+
+    if (length < 2)
+	return;
+    if (length < len_hdr + 4)
+	return;
+    printf("    VSIFs: %d\n", x[3]);
+    length -= len_hdr + 3;
+    x += len_hdr + 4;
+    while (length > 0) {
+	int payload_len = x[0] >> 5;
+
+	if ((x[0] & 0x1f) == 1 && length >= 4) {
+		printf("    InfoFrame Type Code %d IEEE OUI: %02x%02x%02x\n",
+		       x[0] & 0x1f, x[3], x[2], x[1]);
+		x += 4;
+		length -= 4;
+	} else {
+		printf("    InfoFrame Type Code %d\n", x[0] & 0x1f);
+		x++;
+		length--;
+	}
+	x += payload_len;
+	length -= payload_len;
+    }
+}
+
+static void
 cta_block(unsigned char *x)
 {
     static int last_block_was_hdmi_vsdb;
@@ -2031,6 +2062,7 @@ cta_block(unsigned char *x)
 		    break;
 		case 0x20:
 		    printf("InfoFrame data block\n");
+		    cta_ifdb(x);
 		    break;
 		default:
 		    if (x[1] >= 6 && x[1] <= 12)
