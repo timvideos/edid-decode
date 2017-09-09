@@ -1615,17 +1615,26 @@ static struct field *vcdb_fields[] = {
 };
 
 static const char *sadb_map[] = {
-    "FL/FR",
-    "LFE",
-    "FC",
-    "RL/RR",
-    "RC",
-    "FLC/FRC",
-    "RLC/RRC",
-    "FLW/FRW",
-    "FLH/FRH",
-    "TC",
-    "FCH",
+    "FL/FR - Front Left/Right",
+    "LFE - Low Frequency Effects",
+    "FC - Front Center",
+    "BL/BR - Back Left/Right",
+    "BC - Back Center",
+    "FLC/FRC - Front Left/Right of Center",
+    "RLC/RRC - Rear Left/Right of Center",
+    "FLW/FRW - Front Left/Right Wide",
+    "TpFL/TpFH - Top Front Left/Right",
+    "TpC - Top Center",
+    "TpFC - Top Front Center",
+    "LS/RS - Left/Right Surround",
+    "LFE2 - Low Frequency Effects 2",
+    "TpBC - Top Back Center",
+    "SiL/SiR - Side Left/Right",
+    "TpSiL/TpSiR - Top Side Left/Right",
+    "TpBL/TpBR - Top Back Left/Right",
+    "BtFC - Bottom Front Center",
+    "BtFL/BtBR - Bottom Front Left/Right",
+    "TpLS/TpRS - Top Left/Right Surround",
 };
 
 static void
@@ -1635,16 +1644,14 @@ cea_sadb(unsigned char *x)
     int i;
 
     if (length >= 3) {
-	uint16_t sad = ((x[2] << 8) | x[1]);
+	uint32_t sad = ((x[3] << 16) | (x[2] << 8) | x[1]);
 
-	printf("    Speaker map:");
+	printf("    Speaker map:\n");
 
 	for (i = 0; i < ARRAY_SIZE(sadb_map); i++) {
 	    if ((sad >> i) & 1)
-		printf(" %s", sadb_map[i]);
+		printf("      %s\n", sadb_map[i]);
 	}
-
-	printf("\n");
     }
 }
 
