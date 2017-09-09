@@ -1852,6 +1852,8 @@ cea_colorimetry_block(unsigned char *x)
 	    if (x[2] & (1 << i))
 		printf("    %s\n", colorimetry_map[i]);
 	}
+	if (x[3] & 0x80)
+		printf("    DCI-P3\n");
     }
 }
 
