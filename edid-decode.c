@@ -1113,10 +1113,12 @@ cea_audio_block(unsigned char *x)
     }
 }
 
-static struct {
+struct edid_cea_mode {
     const char *name;
     int refresh, hor_freq_hz, pixclk_khz;
-} edid_cea_modes[] = {
+};
+
+static struct edid_cea_mode edid_cea_modes1[] = {
     /* VIC 1 */
     {"640x480@60Hz 4:3", 60, 31469, 25175},
     {"720x480@60Hz 4:3", 60, 31469, 27000},
@@ -1235,7 +1237,72 @@ static struct {
     {"3840x2160@30Hz 64:27", 30, 67500, 297000},
     {"3840x2160@50Hz 64:27", 50, 112500, 594000},
     {"3840x2160@60Hz 64:27", 60, 135000, 594000},
+    {"1280x720@48Hz 16:9", 48, 36000, 90000},
+    {"1280x720@48Hz 64:27", 48, 36000, 90000},
+    {"1680x720@48Hz 64:27", 48, 36000, 99000},
+    /* VIC 111 */
+    {"1920x1080@48Hz 16:9", 48, 54000, 148500},
+    {"1920x1080@48Hz 64:27", 48, 54000, 148500},
+    {"2560x1080@48Hz 64:27", 48, 52800, 198000},
+    {"3840x2160@48Hz 16:9", 48, 108000, 594000},
+    {"4096x2160@48Hz 256:135", 48, 108000, 594000},
+    {"3840x2160@48Hz 64:27", 48, 108000, 594000},
+    {"3840x2160@100Hz 16:9", 100, 225000, 1188000},
+    {"3840x2160@120Hz 16:9", 120, 270000, 1188000},
+    {"3840x2160@100Hz 64:27", 100, 225000, 1188000},
+    {"3840x2160@120Hz 64:27", 120, 270000, 1188000},
+    /* VIC 121 */
+    {"5120x2160@24Hz 64:27", 24, 52800, 396000},
+    {"5120x2160@25Hz 64:27", 25, 55000, 396000},
+    {"5120x2160@30Hz 64:27", 30, 66000, 396000},
+    {"5120x2160@48Hz 64:27", 48, 118800, 742500},
+    {"5120x2160@50Hz 64:27", 50, 112500, 742500},
+    {"5120x2160@60Hz 64:27", 60, 135000, 742500},
+    {"5120x2160@100Hz 64:27", 100, 225000, 1485000},
 };
+
+static struct edid_cea_mode edid_cea_modes2[] = {
+    /* VIC 193 */
+    {"5120x2160@120Hz 64:27", 120, 270000, 1485000},
+    {"7680x4320@24Hz 16:9", 24, 108000, 1188000},
+    {"7680x4320@25Hz 16:9", 25, 110000, 1188000},
+    {"7680x4320@30Hz 16:9", 30, 132000, 1188000},
+    {"7680x4320@48Hz 16:9", 48, 216000, 2376000},
+    {"7680x4320@50Hz 16:9", 50, 220000, 2376000},
+    {"7680x4320@60Hz 16:9", 60, 264000, 2376000},
+    {"7680x4320@100Hz 16:9", 100, 450000, 4752000},
+    /* VIC 201 */
+    {"7680x4320@120Hz 16:9", 120, 540000, 4752000},
+    {"7680x4320@24Hz 64:27", 24, 108000, 1188000},
+    {"7680x4320@25Hz 64:27", 25, 110000, 1188000},
+    {"7680x4320@30Hz 64:27", 30, 132000, 1188000},
+    {"7680x4320@48Hz 64:27", 48, 216000, 2376000},
+    {"7680x4320@50Hz 64:27", 50, 220000, 2376000},
+    {"7680x4320@60Hz 64:27", 60, 264000, 2376000},
+    {"7680x4320@100Hz 64:27", 100, 450000, 4752000},
+    {"7680x4320@120Hz 64:27", 120, 540000, 4752000},
+    {"10240x4320@24Hz 64:27", 24, 118800, 1485000},
+    /* VIC 211 */
+    {"10240x4320@25Hz 64:27", 25, 110000, 1485000},
+    {"10240x4320@30Hz 64:27", 30, 135000, 1485000},
+    {"10240x4320@48Hz 64:27", 48, 237600, 2970000},
+    {"10240x4320@50Hz 64:27", 50, 220000, 2970000},
+    {"10240x4320@60Hz 64:27", 60, 270000, 2970000},
+    {"10240x4320@100Hz 64:27", 100, 450000, 5940000},
+    {"10240x4320@120Hz 64:27", 120, 540000, 5940000},
+    {"4096x2160@100Hz 256:135", 100, 225000, 1188000},
+    {"4096x2160@120Hz 256:135", 120, 270000, 1188000},
+};
+
+static const struct edid_cea_mode *
+vic_to_mode(unsigned char vic)
+{
+    if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes1))
+	return edid_cea_modes1 + vic - 1;
+    if (vic >= 193 && vic <= ARRAY_SIZE(edid_cea_modes2) + 193)
+	return edid_cea_modes2 + vic - 193;
+    return NULL;
+}
 
 static void
 cea_svd(unsigned char *x, int n, int for_ycbcr420)
@@ -1243,6 +1310,7 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
     int i;
 
     for (i = 0; i < n; i++)  {
+	const struct edid_cea_mode *vicmode = NULL;
 	unsigned char svd = x[i];
 	unsigned char native;
 	unsigned char vic;
@@ -1261,7 +1329,8 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 	    native = svd & 0x80;
 	}
 
-	if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes)) {
+	vicmode = vic_to_mode(vic);
+	if (vicmode) {
 	    switch (vic) {
 	    case 95:
 		    supported_hdmi_vic_vsb_codes |= 1 << 0;
@@ -1276,13 +1345,13 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 		    supported_hdmi_vic_vsb_codes |= 1 << 3;
 		    break;
 	    }
-	    mode = edid_cea_modes[vic - 1].name;
-	    min_vert_freq_hz = min(min_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
-	    max_vert_freq_hz = max(max_vert_freq_hz, edid_cea_modes[vic - 1].refresh);
-	    hfreq = edid_cea_modes[vic - 1].hor_freq_hz;
+	    mode = vicmode->name;
+	    min_vert_freq_hz = min(min_vert_freq_hz, vicmode->refresh);
+	    max_vert_freq_hz = max(max_vert_freq_hz, vicmode->refresh);
+	    hfreq = vicmode->hor_freq_hz;
 	    min_hor_freq_hz = min(min_hor_freq_hz, hfreq);
 	    max_hor_freq_hz = max(max_hor_freq_hz, hfreq);
-	    clock_khz = edid_cea_modes[vic - 1].pixclk_khz / (for_ycbcr420 ? 2 : 1);
+	    clock_khz = vicmode->pixclk_khz / (for_ycbcr420 ? 2 : 1);
 	    max_pixclk_khz = max(max_pixclk_khz, clock_khz);
 	} else {
 	    mode = "Unknown mode";
@@ -1337,15 +1406,15 @@ cea_vfpdb(unsigned char *x)
 	unsigned char svr = x[i];
 
 	if ((svr > 0 && svr < 128) || (svr > 192 && svr < 254)) {
+	    const struct edid_cea_mode *vicmode;
 	    unsigned char vic;
 	    const char *mode;
-	    int index;
 
 	    vic = svr;
-	    index = vic - 1;
 
-	    if (index < ARRAY_SIZE(edid_cea_modes))
-		mode = edid_cea_modes[vic].name;
+	    vicmode = vic_to_mode(vic);
+	    if (vicmode)
+		mode = vicmode->name;
 	    else
 		mode = "Unknown mode";
 
