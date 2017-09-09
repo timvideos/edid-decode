@@ -1900,6 +1900,37 @@ cea_hdr_static_metadata_block(unsigned char *x)
 }
 
 static void
+cea_hdr_dyn_metadata_block(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+
+    if (!length)
+	return;
+    length--;
+    x += 2;
+    while (length >= 3) {
+	int type_len = x[0];
+	int type = x[1] | (x[2] << 8);
+
+	if (length < type_len + 1)
+	    return;
+	printf("    HDR Dynamic Metadata Type %d\n", type);
+	switch (type) {
+	case 1:
+	case 2:
+	case 4:
+	    if (type_len > 2)
+		printf("      Version: %d\n", x[3] & 0xf);
+	    break;
+	default:
+	    break;
+	}
+	length -= type_len + 1;
+	x += type_len + 1;
+    }
+}
+
+static void
 cea_block(unsigned char *x)
 {
     static int last_block_was_hdmi_vsdb;
@@ -1964,6 +1995,10 @@ cea_block(unsigned char *x)
 		case 0x06:
 		    printf("HDR static metadata data block\n");
 		    cea_hdr_static_metadata_block(x);
+		    break;
+		case 0x07:
+		    printf("HDR dynamic metadata data block\n");
+		    cea_hdr_dyn_metadata_block(x);
 		    break;
 		case 0x0d:
 		    printf("Video format preference data block\n");
