@@ -1973,20 +1973,20 @@ cea_block(unsigned char *x)
 	    printf("  Extended tag: ");
 	    switch (x[1]) {
 		case 0x00:
-		    printf("video capability data block\n");
+		    printf("Video capability data block\n");
 		    cea_vcdb(x);
 		    break;
 		case 0x01:
-		    printf("vendor-specific video data block\n");
+		    printf("Vendor-specific video data block\n");
 		    break;
 		case 0x02:
-		    printf("VESA video display device information data block\n");
+		    printf("VESA video display device data block\n");
 		    break;
 		case 0x03:
-		    printf("VESA video data block\n");
+		    printf("VESA video timing block extension\n");
 		    break;
 		case 0x04:
-		    printf("HDMI video data block\n");
+		    printf("Reserved for HDMI video data block\n");
 		    break;
 		case 0x05:
 		    printf("Colorimetry data block\n");
@@ -2013,13 +2013,13 @@ cea_block(unsigned char *x)
 		    cea_y420cmdb(x);
 		    break;
 		case 0x10:
-		    printf("CEA miscellaneous audio fields\n");
+		    printf("Reserved for CTA miscellaneous audio fields\n");
 		    break;
 		case 0x11:
 		    printf("Vendor-specific audio data block\n");
 		    break;
 		case 0x12:
-		    printf("HDMI audio data block\n");
+		    printf("Reserved for HDMI audio data block\n");
 		    break;
 		case 0x13:
 		    printf("Room configuration data block\n");
@@ -2034,11 +2034,11 @@ cea_block(unsigned char *x)
 		    break;
 		default:
 		    if (x[1] >= 6 && x[1] <= 12)
-			printf("Reserved video block (%02x)\n", x[1]);
+			printf("Reserved for video-related blocks (%02x)\n", x[1]);
 		    else if (x[1] >= 19 && x[1] <= 31)
-			printf("Reserved audio block (%02x)\n", x[1]);
+			printf("Reserved for audio-related blocks (%02x)\n", x[1]);
 		    else
-			printf("Unknown (%02x)\n", x[1]);
+			printf("Reserved (%02x)\n", x[1]);
 		    break;
 	    }
 	    break;
