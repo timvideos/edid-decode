@@ -54,7 +54,7 @@ static int name_descriptor_terminated = 0;
 static int has_range_descriptor = 0;
 static int has_preferred_timing = 0;
 static int has_valid_checksum = 1;
-static int has_valid_cea_checksum = 1;
+static int has_valid_cta_checksum = 1;
 static int has_valid_displayid_checksum = 1;
 static int has_valid_cvt = 1;
 static int has_valid_dummy_block = 1;
@@ -68,9 +68,9 @@ static int has_valid_descriptor_pad = 1;
 static int has_valid_range_descriptor = 1;
 static int has_valid_max_dotclock = 1;
 static int has_valid_string_termination = 1;
-static int has_cea861 = 0;
+static int has_cta861 = 0;
 static int has_640x480p60_est_timing = 0;
-static int has_cea861_vic_1 = 0;
+static int has_cta861_vic_1 = 0;
 static int manufacturer_name_well_formed = 0;
 static int seen_non_detailed_descriptor = 0;
 
@@ -78,7 +78,7 @@ static int warning_excessive_dotclock_correction = 0;
 static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
 static int nonconformant_srgb_chromaticity = 0;
-static int nonconformant_cea861_640x480 = 0;
+static int nonconformant_cta861_640x480 = 0;
 static int nonconformant_hdmi_vsdb_tmds_rate = 0;
 static int nonconformant_hf_vsdb_tmds_rate = 0;
 
@@ -1016,7 +1016,7 @@ do_checksum(unsigned char *x, size_t len)
     return 1;
 }
 
-/* CEA extension */
+/* CTA extension */
 
 static const char *
 audio_ext_format(unsigned char x)
@@ -1061,13 +1061,13 @@ audio_format(unsigned char x)
 }
 
 static void
-cea_audio_block(unsigned char *x)
+cta_audio_block(unsigned char *x)
 {
     int i, format, ext_format = 0;
     int length = x[0] & 0x1f;
 
     if (length % 3) {
-	printf("Broken CEA audio block length %d\n", length);
+	printf("Broken CTA audio block length %d\n", length);
 	/* XXX non-conformant */
 	return;
     }
@@ -1114,12 +1114,12 @@ cea_audio_block(unsigned char *x)
     }
 }
 
-struct edid_cea_mode {
+struct edid_cta_mode {
     const char *name;
     int refresh, hor_freq_hz, pixclk_khz;
 };
 
-static struct edid_cea_mode edid_cea_modes1[] = {
+static struct edid_cta_mode edid_cta_modes1[] = {
     /* VIC 1 */
     {"640x480@60Hz 4:3", 60, 31469, 25175},
     {"720x480@60Hz 4:3", 60, 31469, 27000},
@@ -1262,7 +1262,7 @@ static struct edid_cea_mode edid_cea_modes1[] = {
     {"5120x2160@100Hz 64:27", 100, 225000, 1485000},
 };
 
-static struct edid_cea_mode edid_cea_modes2[] = {
+static struct edid_cta_mode edid_cta_modes2[] = {
     /* VIC 193 */
     {"5120x2160@120Hz 64:27", 120, 270000, 1485000},
     {"7680x4320@24Hz 16:9", 24, 108000, 1188000},
@@ -1295,23 +1295,23 @@ static struct edid_cea_mode edid_cea_modes2[] = {
     {"4096x2160@120Hz 256:135", 120, 270000, 1188000},
 };
 
-static const struct edid_cea_mode *
+static const struct edid_cta_mode *
 vic_to_mode(unsigned char vic)
 {
-    if (vic > 0 && vic <= ARRAY_SIZE(edid_cea_modes1))
-	return edid_cea_modes1 + vic - 1;
-    if (vic >= 193 && vic <= ARRAY_SIZE(edid_cea_modes2) + 193)
-	return edid_cea_modes2 + vic - 193;
+    if (vic > 0 && vic <= ARRAY_SIZE(edid_cta_modes1))
+	return edid_cta_modes1 + vic - 1;
+    if (vic >= 193 && vic <= ARRAY_SIZE(edid_cta_modes2) + 193)
+	return edid_cta_modes2 + vic - 193;
     return NULL;
 }
 
 static void
-cea_svd(unsigned char *x, int n, int for_ycbcr420)
+cta_svd(unsigned char *x, int n, int for_ycbcr420)
 {
     int i;
 
     for (i = 0; i < n; i++)  {
-	const struct edid_cea_mode *vicmode = NULL;
+	const struct edid_cta_mode *vicmode = NULL;
 	unsigned char svd = x[i];
 	unsigned char native;
 	unsigned char vic;
@@ -1361,28 +1361,28 @@ cea_svd(unsigned char *x, int n, int for_ycbcr420)
 	printf("    VIC %3d %s %s HorFreq: %d Hz Clock: %.3f MHz\n",
 	       vic, mode, native ? "(native)" : "", hfreq, clock_khz / 1000.0);
 	if (vic == 1)
-		has_cea861_vic_1 = 1;
+		has_cta861_vic_1 = 1;
     }
 }
 
 static void
-cea_video_block(unsigned char *x)
+cta_video_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
-    cea_svd(x + 1, length, 0);
+    cta_svd(x + 1, length, 0);
 }
 
 static void
-cea_y420vdb(unsigned char *x)
+cta_y420vdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
-    cea_svd(x + 2, length - 1, 1);
+    cta_svd(x + 2, length - 1, 1);
 }
 
 static void
-cea_y420cmdb(unsigned char *x)
+cta_y420cmdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1398,7 +1398,7 @@ cea_y420cmdb(unsigned char *x)
 }
 
 static void
-cea_vfpdb(unsigned char *x)
+cta_vfpdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1407,7 +1407,7 @@ cea_vfpdb(unsigned char *x)
 	unsigned char svr = x[i];
 
 	if ((svr > 0 && svr < 128) || (svr > 192 && svr < 254)) {
-	    const struct edid_cea_mode *vicmode;
+	    const struct edid_cta_mode *vicmode;
 	    unsigned char vic;
 	    const char *mode;
 
@@ -1438,7 +1438,7 @@ static struct {
 };
 
 static void
-cea_hdmi_block(unsigned char *x)
+cta_hdmi_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
@@ -1623,7 +1623,7 @@ cea_hdmi_block(unsigned char *x)
 }
 
 static void
-cea_hf_block(unsigned char *x)
+cta_hf_block(unsigned char *x)
 {
     printf(" (HDMI Forum)\n");
     printf("    Version: %u\n", x[4]);
@@ -1708,7 +1708,7 @@ static const char *speaker_map[] = {
 };
 
 static void
-cea_sadb(unsigned char *x)
+cta_sadb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1734,7 +1734,7 @@ decode_uchar_as_float(unsigned char x)
 }
 
 static void
-cea_rcdb(unsigned char *x)
+cta_rcdb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     uint32_t spm = ((x[5] << 16) | (x[4] << 8) | x[3]);
@@ -1795,7 +1795,7 @@ static const char *speaker_location[] = {
 };
 
 static void
-cea_sldb(unsigned char *x)
+cta_sldb(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
@@ -1824,7 +1824,7 @@ cea_sldb(unsigned char *x)
 }
 
 static void
-cea_vcdb(unsigned char *x)
+cta_vcdb(unsigned char *x)
 {
     unsigned char d = x[2];
 
@@ -1843,7 +1843,7 @@ static const char *colorimetry_map[] = {
 };
 
 static void
-cea_colorimetry_block(unsigned char *x)
+cta_colorimetry_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1866,7 +1866,7 @@ static const char *eotf_map[] = {
 };
 
 static void
-cea_hdr_static_metadata_block(unsigned char *x)
+cta_hdr_static_metadata_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
     int i;
@@ -1900,7 +1900,7 @@ cea_hdr_static_metadata_block(unsigned char *x)
 }
 
 static void
-cea_hdr_dyn_metadata_block(unsigned char *x)
+cta_hdr_dyn_metadata_block(unsigned char *x)
 {
     int length = x[0] & 0x1f;
 
@@ -1931,7 +1931,7 @@ cea_hdr_dyn_metadata_block(unsigned char *x)
 }
 
 static void
-cea_block(unsigned char *x)
+cta_block(unsigned char *x)
 {
     static int last_block_was_hdmi_vsdb;
     unsigned int oui;
@@ -1939,32 +1939,32 @@ cea_block(unsigned char *x)
     switch ((x[0] & 0xe0) >> 5) {
 	case 0x01:
 	    printf("  Audio data block\n");
-	    cea_audio_block(x);
+	    cta_audio_block(x);
 	    break;
 	case 0x02:
 	    printf("  Video data block\n");
-	    cea_video_block(x);
+	    cta_video_block(x);
 	    break;
 	case 0x03:
 	    /* yes really, endianness lols */
 	    oui = (x[3] << 16) + (x[2] << 8) + x[1];
 	    printf("  Vendor-specific data block, OUI %06x", oui);
 	    if (oui == 0x000c03) {
-		cea_hdmi_block(x);
+		cta_hdmi_block(x);
 		last_block_was_hdmi_vsdb = 1;
 		return;
 	    }
 	    if (oui == 0xc45dd8) {
 		if (!last_block_was_hdmi_vsdb)
 			nonconformant_hf_vsdb_position = 1;
-		cea_hf_block(x);
+		cta_hf_block(x);
 	    } else {
 		printf("\n");
 	    }
 	    break;
 	case 0x04:
 	    printf("  Speaker allocation data block\n");
-	    cea_sadb(x);
+	    cta_sadb(x);
 	    break;
 	case 0x05:
 	    printf("  VESA DTC data block\n");
@@ -1974,7 +1974,7 @@ cea_block(unsigned char *x)
 	    switch (x[1]) {
 		case 0x00:
 		    printf("Video capability data block\n");
-		    cea_vcdb(x);
+		    cta_vcdb(x);
 		    break;
 		case 0x01:
 		    printf("Vendor-specific video data block\n");
@@ -1990,27 +1990,27 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x05:
 		    printf("Colorimetry data block\n");
-		    cea_colorimetry_block(x);
+		    cta_colorimetry_block(x);
 		    break;
 		case 0x06:
 		    printf("HDR static metadata data block\n");
-		    cea_hdr_static_metadata_block(x);
+		    cta_hdr_static_metadata_block(x);
 		    break;
 		case 0x07:
 		    printf("HDR dynamic metadata data block\n");
-		    cea_hdr_dyn_metadata_block(x);
+		    cta_hdr_dyn_metadata_block(x);
 		    break;
 		case 0x0d:
 		    printf("Video format preference data block\n");
-		    cea_vfpdb(x);
+		    cta_vfpdb(x);
 		    break;
 		case 0x0e:
 		    printf("YCbCr 4:2:0 video data block\n");
-		    cea_y420vdb(x);
+		    cta_y420vdb(x);
 		    break;
 		case 0x0f:
 		    printf("YCbCr 4:2:0 capability map data block\n");
-		    cea_y420cmdb(x);
+		    cta_y420cmdb(x);
 		    break;
 		case 0x10:
 		    printf("Reserved for CTA miscellaneous audio fields\n");
@@ -2023,11 +2023,11 @@ cea_block(unsigned char *x)
 		    break;
 		case 0x13:
 		    printf("Room configuration data block\n");
-		    cea_rcdb(x);
+		    cta_rcdb(x);
 		    break;
 		case 0x14:
 		    printf("Speaker location data block\n");
-		    cea_sldb(x);
+		    cta_sldb(x);
 		    break;
 		case 0x20:
 		    printf("InfoFrame data block\n");
@@ -2054,7 +2054,7 @@ cea_block(unsigned char *x)
 }
 
 static int
-parse_cea(unsigned char *x)
+parse_cta(unsigned char *x)
 {
     int ret = 0;
     int version = x[1];
@@ -2074,9 +2074,9 @@ parse_cea(unsigned char *x)
 		/* do stuff */ ;
 	} else if (version == 3) {
 	    int i;
-	    printf("%d bytes of CEA data\n", offset - 4);
+	    printf("%d bytes of CTA data\n", offset - 4);
 	    for (i = 4; i < offset; i += (x[i] & 0x1f) + 1) {
-		cea_block(x + i);
+		cta_block(x + i);
 	    }
 	}
 	
@@ -2097,9 +2097,9 @@ parse_cea(unsigned char *x)
 		detailed_block(detailed, 1);
     } while (0);
 
-    has_valid_cea_checksum = do_checksum(x, EDID_PAGE_SIZE);
-    has_cea861 = 1;
-    nonconformant_cea861_640x480 = !has_cea861_vic_1 && !has_640x480p60_est_timing;
+    has_valid_cta_checksum = do_checksum(x, EDID_PAGE_SIZE);
+    has_cta861 = 1;
+    nonconformant_cta861_640x480 = !has_cta861_vic_1 && !has_640x480p60_est_timing;
 
     return ret;
 }
@@ -2232,7 +2232,7 @@ parse_displayid(unsigned char *x)
 	   printf("VESA DMT timing block\n");
 	   break;
        case 8:
-	   printf("CEA timing block\n");
+	   printf("CTA timing block\n");
 	   break;
        case 9:
 	   printf("Video timing range\n");
@@ -2297,9 +2297,9 @@ parse_extension(unsigned char *x)
 
     switch(x[0]) {
     case 0x02:
-	printf("CEA extension block\n");
+	printf("CTA extension block\n");
 	extension_version(x);
-	conformant_extension = parse_cea(x);
+	conformant_extension = parse_cta(x);
 	break;
     case 0x10: printf("VTB extension block\n"); break;
     case 0x40: printf("DI extension block\n"); break;
@@ -2868,7 +2868,7 @@ int main(int argc, char **argv)
 	    nonconformant_hdmi_vsdb_tmds_rate ||
 	    nonconformant_hf_vsdb_tmds_rate ||
 	    nonconformant_srgb_chromaticity ||
-	    nonconformant_cea861_640x480 ||
+	    nonconformant_cta861_640x480 ||
 	    !has_valid_string_termination ||
 	    !has_valid_descriptor_pad ||
 	    !has_name_descriptor ||
@@ -2883,7 +2883,7 @@ int main(int argc, char **argv)
 	if (nonconformant_digital_display)
 	    printf("\tDigital display field contains garbage: %x\n",
 		   nonconformant_digital_display);
-	if (nonconformant_cea861_640x480)
+	if (nonconformant_cta861_640x480)
 	    printf("\tRequired 640x480p60 timings are missing in the established timings\n"
 		   "\tand/or in the SVD list (VIC 1)\n");
 	if (nonconformant_hf_vsdb_position)
@@ -2949,7 +2949,7 @@ int main(int argc, char **argv)
 	!has_valid_cvt ||
 	!has_valid_year ||
 	!has_valid_week ||
-	(has_cea861 && has_valid_serial_number && has_valid_serial_string) ||
+	(has_cta861 && has_valid_serial_number && has_valid_serial_string) ||
 	!has_valid_detailed_blocks ||
 	!has_valid_dummy_block ||
 	!has_valid_descriptor_ordering ||
@@ -2968,7 +2968,7 @@ int main(int argc, char **argv)
 	    printf("\tBad year of manufacture\n");
 	if (!has_valid_week)
 	    printf("\tBad week of manufacture\n");
-	if (has_cea861 && has_valid_serial_number && has_valid_serial_string)
+	if (has_cta861 && has_valid_serial_number && has_valid_serial_string)
 	    printf("\tBoth the serial number and the serial string are set\n");
 	if (!has_valid_detailed_blocks)
 	    printf("\tDetailed blocks filled with garbage\n");
@@ -2984,8 +2984,8 @@ int main(int argc, char **argv)
 	    printf("\tEDID 1.4 block does not set max dotclock\n");
     }
 
-    if (!has_valid_cea_checksum) {
-        printf("CEA extension block does not conform\n");
+    if (!has_valid_cta_checksum) {
+        printf("CTA extension block does not conform\n");
         printf("\tBlock has broken checksum\n");
     }
     if (!has_valid_displayid_checksum) {
@@ -2998,7 +2998,7 @@ int main(int argc, char **argv)
     if (warning_zero_preferred_refresh)
 	printf("Warning: CVT block does not set preferred refresh rate\n");
     if ((supported_hdmi_vic_vsb_codes & supported_hdmi_vic_codes) != supported_hdmi_vic_codes)
-	printf("Warning: HDMI VIC Codes must have their CEA-861 VIC equivalents in the VSB\n");
+	printf("Warning: HDMI VIC Codes must have their CTA-861 VIC equivalents in the VSB\n");
 
     free(edid);
 
