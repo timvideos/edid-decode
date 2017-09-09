@@ -1638,7 +1638,7 @@ cea_colorimetry_block(unsigned char *x)
 
     if (length >= 3) {
 	for (i = 0; i < ARRAY_SIZE(colorimetry_map); i++) {
-	    if (x[2] >> i)
+	    if (x[2] & (1 << i))
 		printf("    %s\n", colorimetry_map[i]);
 	}
     }
@@ -1659,14 +1659,14 @@ cea_hdr_metadata_block(unsigned char *x)
     if (length >= 3) {
 	printf("    Electro optical transfer functions:\n");
 	for (i = 0; i < 6; i++) {
-	    if (x[2] >> i) {
+	    if (x[2] & (1 << i)) {
 		printf("      %s\n", i < ARRAY_SIZE(eotf_map) ?
 		       eotf_map[i] : "Unknown");
 	    }
 	}
 	printf("    Supported static metadata descriptors:\n");
 	for (i = 0; i < 8; i++) {
-	    if (x[3] >> i)
+	    if (x[3] & (1 << i))
 		printf("      Static metadata type %d\n", i + 1);
 	}
     }
