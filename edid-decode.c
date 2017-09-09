@@ -1705,6 +1705,7 @@ static const char *speaker_map[] = {
     "BtFC - Bottom Front Center",
     "BtFL/BtBR - Bottom Front Left/Right",
     "TpLS/TpRS - Top Left/Right Surround",
+    "LSd/RSd - Left/Right Surround Direct",
 };
 
 static void
@@ -1962,6 +1963,72 @@ cta_ifdb(unsigned char *x)
 }
 
 static void
+cta_hdmi_audio_block(unsigned char *x)
+{
+    int length = x[0] & 0x1f;
+    int num_descs;
+
+    if (length <= 3)
+	return;
+    if (x[2] & 3)
+	    printf("    Max Stream Count: %d\n", (x[2] & 3) + 1);
+    if (x[2] & 4)
+	    printf("    Supports MS NonMixed\n");
+
+    num_descs = x[3] & 7;
+    if (num_descs == 0)
+	    return;
+    length -= 3;
+    x += 4;
+    while (length >= 4) {
+	if (length > 4) {
+	    int format = x[0] & 0xf;
+
+	    printf("    %s, max channels %d\n", audio_format(format),
+		   (x[1] & 0x1f)+1);
+	    printf("      Supported sample rates (kHz):%s%s%s%s%s%s%s\n",
+		   (x[2] & 0x40) ? " 192" : "",
+		   (x[2] & 0x20) ? " 176.4" : "",
+		   (x[2] & 0x10) ? " 96" : "",
+		   (x[2] & 0x08) ? " 88.2" : "",
+		   (x[2] & 0x04) ? " 48" : "",
+		   (x[2] & 0x02) ? " 44.1" : "",
+		   (x[2] & 0x01) ? " 32" : "");
+	    if (format == 1)
+		printf("      Supported sample sizes (bits):%s%s%s\n",
+		       (x[3] & 0x04) ? " 24" : "",
+		       (x[3] & 0x02) ? " 20" : "",
+		       (x[3] & 0x01) ? " 16" : "");
+	} else {
+		uint32_t sad = ((x[2] << 16) | (x[1] << 8) | x[0]);
+		int i;
+
+		switch (x[3] >> 4) {
+		case 1:
+			printf("    Speaker Allocation for 10.2 channels:\n");
+			break;
+		case 2:
+			printf("    Speaker Allocation for 22.2 channels:\n");
+			break;
+		case 3:
+			printf("    Speaker Allocation for 30.2 channels:\n");
+			break;
+		default:
+			printf("    Unknown Speaker Allocation (%d)\n", x[3] >> 4);
+			return;
+		}
+
+		for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
+			if ((sad >> i) & 1)
+				printf("      %s\n", speaker_map[i]);
+		}
+	}
+	length -= 4;
+	x += 4;
+    }
+}
+
+static void
 cta_block(unsigned char *x)
 {
     static int last_block_was_hdmi_vsdb;
@@ -2050,7 +2117,8 @@ cta_block(unsigned char *x)
 		    printf("Vendor-specific audio data block\n");
 		    break;
 		case 0x12:
-		    printf("Reserved for HDMI audio data block\n");
+		    printf("HDMI audio data block\n");
+		    cta_hdmi_audio_block(x);
 		    break;
 		case 0x13:
 		    printf("Room configuration data block\n");
