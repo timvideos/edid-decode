@@ -1,0 +1,26 @@
+This utility is maintained here:
+
+https://git.linuxtv.org/edid-decode.git/
+
+To build this do:
+
+git clone git://linuxtv.org/edid-decode.git
+cd edid-decode
+make
+make install
+
+Patches and bug reports can be sent to the linux-media mailinglist
+(see https://www.linuxtv.org/lists.php). Please make sure that
+'edid-decode' appears in the subject line.
+
+I can also be contacted directly:
+
+Hans Verkuil <hverkuil@xs4all.nl>
+
+or:
+
+Hans Verkuil <hans.verkuil@cisco.com>
+
+Regards,
+
+	Hans
