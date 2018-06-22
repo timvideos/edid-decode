@@ -1059,10 +1059,9 @@ static const char *audio_format(unsigned char x)
 	return "BROKEN"; /* can't happen */
 }
 
-static void cta_audio_block(const unsigned char *x)
+static void cta_audio_block(const unsigned char *x, unsigned int length)
 {
 	int i, format, ext_format = 0;
-	int length = x[0] & 0x1f;
 
 	if (length % 3) {
 		printf("Broken CTA audio block length %d\n", length);
@@ -1070,7 +1069,7 @@ static void cta_audio_block(const unsigned char *x)
 		return;
 	}
 
-	for (i = 1; i < length; i += 3) {
+	for (i = 0; i < length; i += 3) {
 		format = (x[i] & 0x78) >> 3;
 		ext_format = (x[i + 2] & 0xf8) >> 3;
 		if (format != 15)
@@ -1361,27 +1360,22 @@ static void cta_svd(const unsigned char *x, int n, int for_ycbcr420)
 	}
 }
 
-static void cta_video_block(const unsigned char *x)
+static void cta_video_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-
-	cta_svd(x + 1, length, 0);
+	cta_svd(x, length, 0);
 }
 
-static void cta_y420vdb(const unsigned char *x)
+static void cta_y420vdb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-
-	cta_svd(x + 2, length - 1, 1);
+	cta_svd(x, length, 1);
 }
 
-static void cta_y420cmdb(const unsigned char *x)
+static void cta_y420cmdb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
 	int i;
 
-	for (i = 0; i < length - 1; i++) {
-		uint8_t v = x[2 + i];
+	for (i = 0; i < length; i++) {
+		uint8_t v = x[0 + i];
 		int j;
 
 		for (j = 0; j < 8; j++)
@@ -1390,12 +1384,11 @@ static void cta_y420cmdb(const unsigned char *x)
 	}
 }
 
-static void cta_vfpdb(const unsigned char *x)
+static void cta_vfpdb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
 	int i;
 
-	for (i = 2; i <= length; i++)  {
+	for (i = 0; i < length; i++)  {
 		unsigned char svr = x[i];
 
 		if ((svr > 0 && svr < 128) || (svr > 192 && svr < 254)) {
@@ -1429,218 +1422,230 @@ static struct {
 	{"4096x2160@24Hz 256:135", 24, 54000, 297000},
 };
 
-static void cta_hdmi_block(const unsigned char *x)
+static void cta_hdmi_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
+	int mask = 0, formats = 0;
+	int len_vic, len_3d;
+	int b = 0;
 
 	printf(" (HDMI)\n");
-	printf("    Source physical address %d.%d.%d.%d\n", x[4] >> 4, x[4] & 0x0f,
-	       x[5] >> 4, x[5] & 0x0f);
+	printf("    Source physical address %d.%d.%d.%d\n", x[3] >> 4, x[3] & 0x0f,
+	       x[4] >> 4, x[4] & 0x0f);
 
-	if (length > 5) {
-		if (x[6] & 0x80)
-			printf("    Supports_AI\n");
-		if (x[6] & 0x40)
-			printf("    DC_48bit\n");
-		if (x[6] & 0x20)
-			printf("    DC_36bit\n");
-		if (x[6] & 0x10)
-			printf("    DC_30bit\n");
-		if (x[6] & 0x08)
-			printf("    DC_Y444\n");
-		/* two reserved */
-		if (x[6] & 0x01)
-			printf("    DVI_Dual\n");
-	}
+	if (length < 6)
+		return;
 
-	if (length > 6) {
-		printf("    Maximum TMDS clock: %dMHz\n", x[7] * 5);
-		if (x[7] * 5 > 340)
-			nonconformant_hdmi_vsdb_tmds_rate = 1;
-	}
+	if (x[5] & 0x80)
+		printf("    Supports_AI\n");
+	if (x[5] & 0x40)
+		printf("    DC_48bit\n");
+	if (x[5] & 0x20)
+		printf("    DC_36bit\n");
+	if (x[5] & 0x10)
+		printf("    DC_30bit\n");
+	if (x[5] & 0x08)
+		printf("    DC_Y444\n");
+	/* two reserved */
+	if (x[5] & 0x01)
+		printf("    DVI_Dual\n");
+
+	if (length < 7)
+		return;
+
+	printf("    Maximum TMDS clock: %dMHz\n", x[6] * 5);
+	if (x[6] * 5 > 340)
+		nonconformant_hdmi_vsdb_tmds_rate = 1;
 
 	/* XXX the walk here is really ugly, and needs to be length-checked */
-	if (length > 7) {
-		int b = 0;
+	if (length < 8)
+		return;
 
-		if (x[8] & 0x80) {
-			printf("    Video latency: %d\n", x[9 + b]);
-			printf("    Audio latency: %d\n", x[10 + b]);
+	if (x[7] & 0x0f) {
+		printf("    Supported Content Types:\n");
+		if (x[7] & 0x01)
+			printf("      Graphics\n");
+		if (x[7] & 0x02)
+			printf("      Photo\n");
+		if (x[7] & 0x04)
+			printf("      Cinema\n");
+		if (x[7] & 0x08)
+			printf("      Game\n");
+	}
+
+	if (x[7] & 0x80) {
+		printf("    Video latency: %d\n", x[8 + b]);
+		printf("    Audio latency: %d\n", x[9 + b]);
+		b += 2;
+
+		if (x[7] & 0x40) {
+			printf("    Interlaced video latency: %d\n", x[8 + b]);
+			printf("    Interlaced audio latency: %d\n", x[9 + b]);
 			b += 2;
 		}
+	}
 
-		if (x[8] & 0x40) {
-			printf("    Interlaced video latency: %d\n", x[9 + b]);
-			printf("    Interlaced audio latency: %d\n", x[10 + b]);
-			b += 2;
+	if (!(x[7] & 0x20))
+		return;
+
+	printf("    Extended HDMI video details:\n");
+	if (x[8 + b] & 0x80)
+		printf("      3D present\n");
+	if ((x[8 + b] & 0x60) == 0x20) {
+		printf("      All advertised VICs are 3D-capable\n");
+		formats = 1;
+	}
+	if ((x[8 + b] & 0x60) == 0x40) {
+		printf("      3D-capable-VIC mask present\n");
+		formats = 1;
+		mask = 1;
+	}
+	switch (x[8 + b] & 0x18) {
+	case 0x00: break;
+	case 0x08:
+		   printf("      Base EDID image size is aspect ratio\n");
+		   break;
+	case 0x10:
+		   printf("      Base EDID image size is in units of 1cm\n");
+		   break;
+	case 0x18:
+		   printf("      Base EDID image size is in units of 5cm\n");
+		   break;
+	}
+	len_vic = (x[9 + b] & 0xe0) >> 5;
+	len_3d = (x[9 + b] & 0x1f) >> 0;
+	b += 2;
+
+	if (len_vic) {
+		unsigned hfreq = 0;
+		unsigned clock_khz = 0;
+		int i;
+
+		for (i = 0; i < len_vic; i++) {
+			unsigned char vic = x[8 + b + i];
+			const char *mode;
+
+			if (vic && vic <= ARRAY_SIZE(edid_hdmi_modes)) {
+				supported_hdmi_vic_codes |= 1 << (vic - 1);
+				mode = edid_hdmi_modes[vic - 1].name;
+				min_vert_freq_hz = min(min_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
+				max_vert_freq_hz = max(max_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
+				hfreq = edid_hdmi_modes[vic - 1].hor_freq_hz;
+				min_hor_freq_hz = min(min_hor_freq_hz, hfreq);
+				max_hor_freq_hz = max(max_hor_freq_hz, hfreq);
+				clock_khz = edid_hdmi_modes[vic - 1].pixclk_khz;
+				max_pixclk_khz = max(max_pixclk_khz, clock_khz);
+			} else {
+				mode = "Unknown mode";
+			}
+
+			printf("      HDMI VIC %d %s HorFreq: %d Hz Clock: %.3f MHz\n",
+			       vic, mode, hfreq, clock_khz / 1000.0);
 		}
 
-		if (x[8] & 0x20) {
-			int mask = 0, formats = 0;
-			int len_vic, len_3d;
-			printf("    Extended HDMI video details:\n");
-			if (x[9 + b] & 0x80)
-				printf("      3D present\n");
-			if ((x[9 + b] & 0x60) == 0x20) {
-				printf("      All advertised VICs are 3D-capable\n");
-				formats = 1;
-			}
-			if ((x[9 + b] & 0x60) == 0x40) {
-				printf("      3D-capable-VIC mask present\n");
-				formats = 1;
-				mask = 1;
-			}
-			switch (x[9 + b] & 0x18) {
-			case 0x00: break;
-			case 0x08:
-				   printf("      Base EDID image size is aspect ratio\n");
-				   break;
-			case 0x10:
-				   printf("      Base EDID image size is in units of 1cm\n");
-				   break;
-			case 0x18:
-				   printf("      Base EDID image size is in units of 5cm\n");
-				   break;
-			}
-			len_vic = (x[10 + b] & 0xe0) >> 5;
-			len_3d = (x[10 + b] & 0x1f) >> 0;
+		b += len_vic;
+	}
+
+	if (len_3d) {
+		if (formats) {
+			/* 3D_Structure_ALL_15..8 */
+			if (x[8 + b] & 0x80)
+				printf("      3D: Side-by-side (half, quincunx)\n");
+			if (x[8 + b] & 0x01)
+				printf("      3D: Side-by-side (half, horizontal)\n");
+			/* 3D_Structure_ALL_7..0 */
+			if (x[9 + b] & 0x40)
+				printf("      3D: Top-and-bottom\n");
+			if (x[9 + b] & 0x20)
+				printf("      3D: L + depth + gfx + gfx-depth\n");
+			if (x[9 + b] & 0x10)
+				printf("      3D: L + depth\n");
+			if (x[9 + b] & 0x08)
+				printf("      3D: Side-by-side (full)\n");
+			if (x[9 + b] & 0x04)
+				printf("      3D: Line-alternative\n");
+			if (x[9 + b] & 0x02)
+				printf("      3D: Field-alternative\n");
+			if (x[9 + b] & 0x01)
+				printf("      3D: Frame-packing\n");
 			b += 2;
+			len_3d -= 2;
+		}
+		if (mask) {
+			int i;
+			printf("      3D VIC indices:");
+			/* worst bit ordering ever */
+			for (i = 0; i < 8; i++)
+				if (x[9 + b] & (1 << i))
+					printf(" %d", i);
+			for (i = 0; i < 8; i++)
+				if (x[8 + b] & (1 << i))
+					printf(" %d", i + 8);
+			printf("\n");
+			b += 2;
+			len_3d -= 2;
+		}
 
-			if (len_vic) {
-				unsigned hfreq = 0;
-				unsigned clock_khz = 0;
-				int i;
+		/*
+		 * list of nibbles:
+		 * 2D_VIC_Order_X
+		 * 3D_Structure_X
+		 * (optionally: 3D_Detail_X and reserved)
+		 */
+		if (len_3d > 0) {
+			int end = b + len_3d;
 
-				for (i = 0; i < len_vic; i++) {
-					unsigned char vic = x[9 + b + i];
-					const char *mode;
-
-					if (vic && vic <= ARRAY_SIZE(edid_hdmi_modes)) {
-						supported_hdmi_vic_codes |= 1 << (vic - 1);
-						mode = edid_hdmi_modes[vic - 1].name;
-						min_vert_freq_hz = min(min_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
-						max_vert_freq_hz = max(max_vert_freq_hz, edid_hdmi_modes[vic - 1].refresh);
-						hfreq = edid_hdmi_modes[vic - 1].hor_freq_hz;
-						min_hor_freq_hz = min(min_hor_freq_hz, hfreq);
-						max_hor_freq_hz = max(max_hor_freq_hz, hfreq);
-						clock_khz = edid_hdmi_modes[vic - 1].pixclk_khz;
-						max_pixclk_khz = max(max_pixclk_khz, clock_khz);
-					} else {
-						mode = "Unknown mode";
+			while (b < end) {
+				printf("      VIC index %d supports ", x[8 + b] >> 4);
+				switch (x[8 + b] & 0x0f) {
+				case 0: printf("frame packing"); break;
+				case 6: printf("top-and-bottom"); break;
+				case 8:
+					if ((x[9 + b] >> 4) == 1) {
+						printf("side-by-side (half, horizontal)");
+						break;
 					}
-
-					printf("      HDMI VIC %d %s HorFreq: %d Hz Clock: %.3f MHz\n",
-					       vic, mode, hfreq, clock_khz / 1000.0);
+				default: printf("unknown");
 				}
+				printf("\n");
 
-				b += len_vic;
+				if ((x[8 + b] & 0x0f) > 7) {
+					/* Optional 3D_Detail_X and reserved */
+					b++;
+				}
+				b++;
 			}
-
-			if (len_3d) {
-				if (formats) {
-					/* 3D_Structure_ALL_15..8 */
-					if (x[9 + b] & 0x80)
-						printf("      3D: Side-by-side (half, quincunx)\n");
-					if (x[9 + b] & 0x01)
-						printf("      3D: Side-by-side (half, horizontal)\n");
-					/* 3D_Structure_ALL_7..0 */
-					if (x[10 + b] & 0x40)
-						printf("      3D: Top-and-bottom\n");
-					if (x[10 + b] & 0x20)
-						printf("      3D: L + depth + gfx + gfx-depth\n");
-					if (x[10 + b] & 0x10)
-						printf("      3D: L + depth\n");
-					if (x[10 + b] & 0x08)
-						printf("      3D: Side-by-side (full)\n");
-					if (x[10 + b] & 0x04)
-						printf("      3D: Line-alternative\n");
-					if (x[10 + b] & 0x02)
-						printf("      3D: Field-alternative\n");
-					if (x[10 + b] & 0x01)
-						printf("      3D: Frame-packing\n");
-					b += 2;
-					len_3d -= 2;
-				}
-				if (mask) {
-					int i;
-					printf("      3D VIC indices:");
-					/* worst bit ordering ever */
-					for (i = 0; i < 8; i++)
-						if (x[10 + b] & (1 << i))
-							printf(" %d", i);
-					for (i = 0; i < 8; i++)
-						if (x[9 + b] & (1 << i))
-							printf(" %d", i + 8);
-					printf("\n");
-					b += 2;
-					len_3d -= 2;
-				}
-
-				/*
-				 * list of nibbles:
-				 * 2D_VIC_Order_X
-				 * 3D_Structure_X
-				 * (optionally: 3D_Detail_X and reserved)
-				 */
-				if (len_3d > 0) {
-					int end = b + len_3d;
-
-					while (b < end) {
-						printf("      VIC index %d supports ", x[9 + b] >> 4);
-						switch (x[9 + b] & 0x0f) {
-						case 0: printf("frame packing"); break;
-						case 6: printf("top-and-bottom"); break;
-						case 8:
-							if ((x[10 + b] >> 4) == 1) {
-								printf("side-by-side (half, horizontal)");
-								break;
-							}
-						default: printf("unknown");
-						}
-						printf("\n");
-
-						if ((x[9 + b] & 0x0f) > 7) {
-							/* Optional 3D_Detail_X and reserved */
-							b++;
-						}
-						b++;
-					}
-				}
-
-			}
-
 		}
 	}
 }
 
-static void cta_hf_block(const unsigned char *x)
+static void cta_hf_block(const unsigned char *x, unsigned int length)
 {
 	printf(" (HDMI Forum)\n");
-	printf("    Version: %u\n", x[4]);
-	if (x[5]) {
-		unsigned rate = x[5] * 5;
+	printf("    Version: %u\n", x[3]);
+	if (x[4]) {
+		unsigned rate = x[4] * 5;
 
 		printf("    Maximum TMDS Character Rate: %uMHz\n", rate);
 		if ((rate && rate <= 340) || rate > 600)
 			nonconformant_hf_vsdb_tmds_rate = 1;
 	}
-	if (x[6] & 0x80)
+	if (x[5] & 0x80)
 		printf("    SCDC Present\n");
-	if (x[6] & 0x40)
+	if (x[5] & 0x40)
 		printf("    SCDC Read Request Capable\n");
-	if (x[6] & 0x08)
+	if (x[5] & 0x08)
 		printf("    Supports scrambling for <= 340 Mcsc\n");
-	if (x[6] & 0x04)
+	if (x[5] & 0x04)
 		printf("    Supports 3D Independent View signaling\n");
-	if (x[6] & 0x02)
+	if (x[5] & 0x02)
 		printf("    Supports 3D Dual View signaling\n");
-	if (x[6] & 0x01)
+	if (x[5] & 0x01)
 		printf("    Supports 3D OSD Disparity signaling\n");
-	if (x[7] & 0x04)
+	if (x[6] & 0x04)
 		printf("    Supports 16-bits/component Deep Color 4:2:0 Pixel Encoding\n");
-	if (x[7] & 0x02)
+	if (x[6] & 0x02)
 		printf("    Supports 12-bits/component Deep Color 4:2:0 Pixel Encoding\n");
-	if (x[7] & 0x01)
+	if (x[6] & 0x01)
 		printf("    Supports 10-bits/component Deep Color 4:2:0 Pixel Encoding\n");
 }
 
@@ -1698,20 +1703,21 @@ static const char *speaker_map[] = {
 	"LSd/RSd - Left/Right Surround Direct",
 };
 
-static void cta_sadb(const unsigned char *x)
+static void cta_sadb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
+	uint32_t sad;
 	int i;
 
-	if (length >= 3) {
-		uint32_t sad = ((x[3] << 16) | (x[2] << 8) | x[1]);
+	if (length < 3)
+		return;
 
-		printf("    Speaker map:\n");
+	sad = ((x[2] << 16) | (x[1] << 8) | x[0]);
 
-		for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
-			if ((sad >> i) & 1)
-				printf("      %s\n", speaker_map[i]);
-		}
+	printf("    Speaker map:\n");
+
+	for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
+		if ((sad >> i) & 1)
+			printf("      %s\n", speaker_map[i]);
 	}
 }
 
@@ -1722,32 +1728,31 @@ static float decode_uchar_as_float(unsigned char x)
 	return s / 64.0;
 }
 
-static void cta_rcdb(const unsigned char *x)
+static void cta_rcdb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-	uint32_t spm = ((x[5] << 16) | (x[4] << 8) | x[3]);
+	uint32_t spm = ((x[3] << 16) | (x[2] << 8) | x[1]);
 	int i;
 
 	if (length < 4)
 		return;
 
-	if (x[2] & 0x40)
-		printf("    Speaker count: %d\n", (x[2] & 0x1f) + 1);
+	if (x[0] & 0x40)
+		printf("    Speaker count: %d\n", (x[0] & 0x1f) + 1);
 
 	printf("    Speaker Presence Mask:\n");
 	for (i = 0; i < ARRAY_SIZE(speaker_map); i++) {
 		if ((spm >> i) & 1)
 			printf("      %s\n", speaker_map[i]);
 	}
-	if ((x[2] & 0x20) && length >= 7) {
-		printf("    Xmax: %d dm\n", x[6]);
-		printf("    Ymax: %d dm\n", x[7]);
-		printf("    Zmax: %d dm\n", x[8]);
+	if ((x[0] & 0x20) && length >= 7) {
+		printf("    Xmax: %d dm\n", x[4]);
+		printf("    Ymax: %d dm\n", x[5]);
+		printf("    Zmax: %d dm\n", x[6]);
 	}
-	if ((x[2] & 0x80) && length >= 10) {
-		printf("    DisplayX: %.3f * Xmax\n", decode_uchar_as_float(x[9]));
-		printf("    DisplayY: %.3f * Ymax\n", decode_uchar_as_float(x[10]));
-		printf("    DisplayZ: %.3f * Zmax\n", decode_uchar_as_float(x[11]));
+	if ((x[0] & 0x80) && length >= 10) {
+		printf("    DisplayX: %.3f * Xmax\n", decode_uchar_as_float(x[7]));
+		printf("    DisplayY: %.3f * Ymax\n", decode_uchar_as_float(x[8]));
+		printf("    DisplayZ: %.3f * Zmax\n", decode_uchar_as_float(x[9]));
 	}
 }
 
@@ -1782,16 +1787,8 @@ static const char *speaker_location[] = {
 	"RS - Right Surround",
 };
 
-static void cta_sldb(const unsigned char *x)
+static void cta_sldb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-
-	if (!length)
-		return;
-
-	x += 2;
-	length--;
-
 	while (length >= 2) {
 		printf("    Channel: %d (%sactive)\n", x[0] & 0x1f,
 		       (x[0] & 0x20) ? "" : "not ");
@@ -1810,9 +1807,9 @@ static void cta_sldb(const unsigned char *x)
 	}
 }
 
-static void cta_vcdb(const unsigned char *x)
+static void cta_vcdb(const unsigned char *x, unsigned int length)
 {
-	unsigned char d = x[2];
+	unsigned char d = x[0];
 
 	decode(vcdb_fields, d, "    ");
 }
@@ -1828,17 +1825,16 @@ static const char *colorimetry_map[] = {
 	"BT2020RGB",
 };
 
-static void cta_colorimetry_block(const unsigned char *x)
+static void cta_colorimetry_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
 	int i;
 
-	if (length >= 3) {
+	if (length >= 2) {
 		for (i = 0; i < ARRAY_SIZE(colorimetry_map); i++) {
-			if (x[2] & (1 << i))
+			if (x[0] & (1 << i))
 				printf("    %s\n", colorimetry_map[i]);
 		}
-		if (x[3] & 0x80)
+		if (x[1] & 0x80)
 			printf("    DCI-P3\n");
 	}
 }
@@ -1850,47 +1846,40 @@ static const char *eotf_map[] = {
 	"Hybrid Log-Gamma",
 };
 
-static void cta_hdr_static_metadata_block(const unsigned char *x)
+static void cta_hdr_static_metadata_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
 	int i;
 
-	if (length >= 3) {
+	if (length >= 2) {
 		printf("    Electro optical transfer functions:\n");
 		for (i = 0; i < 6; i++) {
-			if (x[2] & (1 << i)) {
+			if (x[0] & (1 << i)) {
 				printf("      %s\n", i < ARRAY_SIZE(eotf_map) ?
 				       eotf_map[i] : "Unknown");
 			}
 		}
 		printf("    Supported static metadata descriptors:\n");
 		for (i = 0; i < 8; i++) {
-			if (x[3] & (1 << i))
+			if (x[1] & (1 << i))
 				printf("      Static metadata type %d\n", i + 1);
 		}
 	}
 
-	if (length >= 4)
+	if (length >= 3)
 		printf("    Desired content max luminance: %d (%.3f cd/m^2)\n",
-		       x[4], 50.0 * pow(2, x[4] / 32.0));
+		       x[2], 50.0 * pow(2, x[2] / 32.0));
+
+	if (length >= 4)
+		printf("    Desired content max frame-average luminance: %d (%.3f cd/m^2)\n",
+		       x[3], 50.0 * pow(2, x[3] / 32.0));
 
 	if (length >= 5)
-		printf("    Desired content max frame-average luminance: %d (%.3f cd/m^2)\n",
-		       x[5], 50.0 * pow(2, x[5] / 32.0));
-
-	if (length >= 6)
 		printf("    Desired content min luminance: %d (%.3f cd/m^2)\n",
-		       x[6], (50.0 * pow(2, x[4] / 32.0)) * pow(x[6] / 255.0, 2) / 100.0);
+		       x[4], (50.0 * pow(2, x[2] / 32.0)) * pow(x[4] / 255.0, 2) / 100.0);
 }
 
-static void cta_hdr_dyn_metadata_block(const unsigned char *x)
+static void cta_hdr_dyn_metadata_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-
-	if (!length)
-		return;
-	length--;
-	x += 2;
 	while (length >= 3) {
 		int type_len = x[0];
 		int type = x[1] | (x[2] << 8);
@@ -1913,18 +1902,17 @@ static void cta_hdr_dyn_metadata_block(const unsigned char *x)
 	}
 }
 
-static void cta_ifdb(const unsigned char *x)
+static void cta_ifdb(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
-	int len_hdr = x[2] >> 5;
+	int len_hdr = x[0] >> 5;
 
 	if (length < 2)
 		return;
-	if (length < len_hdr + 4)
+	printf("    VSIFs: %d\n", x[1]);
+	if (length < len_hdr + 2)
 		return;
-	printf("    VSIFs: %d\n", x[3]);
-	length -= len_hdr + 3;
-	x += len_hdr + 4;
+	length -= len_hdr + 2;
+	x += len_hdr + 2;
 	while (length > 0) {
 		int payload_len = x[0] >> 5;
 
@@ -1943,23 +1931,22 @@ static void cta_ifdb(const unsigned char *x)
 	}
 }
 
-static void cta_hdmi_audio_block(const unsigned char *x)
+static void cta_hdmi_audio_block(const unsigned char *x, unsigned int length)
 {
-	int length = x[0] & 0x1f;
 	int num_descs;
 
-	if (length <= 3)
+	if (length < 2)
 		return;
-	if (x[2] & 3)
-		printf("    Max Stream Count: %d\n", (x[2] & 3) + 1);
-	if (x[2] & 4)
+	if (x[0] & 3)
+		printf("    Max Stream Count: %d\n", (x[0] & 3) + 1);
+	if (x[0] & 4)
 		printf("    Supports MS NonMixed\n");
 
-	num_descs = x[3] & 7;
+	num_descs = x[1] & 7;
 	if (num_descs == 0)
 		return;
-	length -= 3;
-	x += 4;
+	length -= 2;
+	x += 2;
 	while (length >= 4) {
 		if (length > 4) {
 			int format = x[0] & 0xf;
@@ -2011,37 +1998,38 @@ static void cta_hdmi_audio_block(const unsigned char *x)
 static void cta_block(const unsigned char *x)
 {
 	static int last_block_was_hdmi_vsdb;
+	unsigned int length = x[0] & 0x1f;
 	unsigned int oui;
 
 	switch ((x[0] & 0xe0) >> 5) {
 	case 0x01:
 		printf("  Audio data block\n");
-		cta_audio_block(x);
+		cta_audio_block(x + 1, length);
 		break;
 	case 0x02:
 		printf("  Video data block\n");
-		cta_video_block(x);
+		cta_video_block(x + 1, length);
 		break;
 	case 0x03:
 		/* yes really, endianness lols */
 		oui = (x[3] << 16) + (x[2] << 8) + x[1];
 		printf("  Vendor-specific data block, OUI %06x", oui);
 		if (oui == 0x000c03) {
-			cta_hdmi_block(x);
+			cta_hdmi_block(x + 1, length);
 			last_block_was_hdmi_vsdb = 1;
 			return;
 		}
 		if (oui == 0xc45dd8) {
 			if (!last_block_was_hdmi_vsdb)
 				nonconformant_hf_vsdb_position = 1;
-			cta_hf_block(x);
+			cta_hf_block(x + 1, length);
 		} else {
 			printf("\n");
 		}
 		break;
 	case 0x04:
 		printf("  Speaker allocation data block\n");
-		cta_sadb(x);
+		cta_sadb(x + 1, length);
 		break;
 	case 0x05:
 		printf("  VESA DTC data block\n");
@@ -2051,7 +2039,7 @@ static void cta_block(const unsigned char *x)
 		switch (x[1]) {
 		case 0x00:
 			printf("Video capability data block\n");
-			cta_vcdb(x);
+			cta_vcdb(x + 2, length - 1);
 			break;
 		case 0x01:
 			printf("Vendor-specific video data block\n");
@@ -2067,27 +2055,27 @@ static void cta_block(const unsigned char *x)
 			break;
 		case 0x05:
 			printf("Colorimetry data block\n");
-			cta_colorimetry_block(x);
+			cta_colorimetry_block(x + 2, length - 1);
 			break;
 		case 0x06:
 			printf("HDR static metadata data block\n");
-			cta_hdr_static_metadata_block(x);
+			cta_hdr_static_metadata_block(x + 2, length - 1);
 			break;
 		case 0x07:
 			printf("HDR dynamic metadata data block\n");
-			cta_hdr_dyn_metadata_block(x);
+			cta_hdr_dyn_metadata_block(x + 2, length - 1);
 			break;
 		case 0x0d:
 			printf("Video format preference data block\n");
-			cta_vfpdb(x);
+			cta_vfpdb(x + 2, length - 1);
 			break;
 		case 0x0e:
 			printf("YCbCr 4:2:0 video data block\n");
-			cta_y420vdb(x);
+			cta_y420vdb(x + 2, length - 1);
 			break;
 		case 0x0f:
 			printf("YCbCr 4:2:0 capability map data block\n");
-			cta_y420cmdb(x);
+			cta_y420cmdb(x + 2, length - 1);
 			break;
 		case 0x10:
 			printf("Reserved for CTA miscellaneous audio fields\n");
@@ -2097,19 +2085,19 @@ static void cta_block(const unsigned char *x)
 			break;
 		case 0x12:
 			printf("HDMI audio data block\n");
-			cta_hdmi_audio_block(x);
+			cta_hdmi_audio_block(x + 2, length - 1);
 			break;
 		case 0x13:
 			printf("Room configuration data block\n");
-			cta_rcdb(x);
+			cta_rcdb(x + 2, length - 1);
 			break;
 		case 0x14:
 			printf("Speaker location data block\n");
-			cta_sldb(x);
+			cta_sldb(x + 2, length - 1);
 			break;
 		case 0x20:
 			printf("InfoFrame data block\n");
-			cta_ifdb(x);
+			cta_ifdb(x + 2, length - 1);
 			break;
 		default:
 			if (x[1] >= 6 && x[1] <= 12)
