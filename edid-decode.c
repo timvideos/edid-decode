@@ -51,7 +51,8 @@ static int nonconformant_digital_display = 0;
 static int nonconformant_extension = 0;
 static int did_detailed_timing = 0;
 static int has_name_descriptor = 0;
-static int name_descriptor_terminated = 0;
+static int has_serial_string = 0;
+static int has_ascii_string = 0;
 static int has_range_descriptor = 0;
 static int has_preferred_timing = 0;
 static int has_valid_checksum = 1;
@@ -61,6 +62,8 @@ static int has_valid_cvt = 1;
 static int has_valid_dummy_block = 1;
 static int has_valid_serial_number = 0;
 static int has_valid_serial_string = 0;
+static int has_valid_ascii_string = 0;
+static int has_valid_name_descriptor = 0;
 static int has_valid_week = 0;
 static int has_valid_year = 0;
 static int has_valid_detailed_blocks = 0;
@@ -69,6 +72,8 @@ static int has_valid_descriptor_pad = 1;
 static int has_valid_range_descriptor = 1;
 static int has_valid_max_dotclock = 1;
 static int has_valid_string_termination = 1;
+static int empty_string = 0;
+static int trailing_space = 0;
 static int has_cta861 = 0;
 static int has_640x480p60_est_timing = 0;
 static int has_cta861_vic_1 = 0;
@@ -405,12 +410,13 @@ static int detailed_cvt_descriptor(unsigned char *x, int first)
 }
 
 /* extract a string from a detailed subblock, checking for termination */
-static char *extract_string(unsigned char *x, int *valid_termination, int len)
+static char *extract_string(unsigned char *x, int *valid, int len)
 {
 	static char ret[EDID_PAGE_SIZE];
 	int i, seen_newline = 0;
 
 	memset(ret, 0, sizeof(ret));
+	*valid = 1;
 
 	for (i = 0; i < len; i++) {
 		if (isgraph(x[i])) {
@@ -418,18 +424,30 @@ static char *extract_string(unsigned char *x, int *valid_termination, int len)
 		} else if (!seen_newline) {
 			if (x[i] == 0x0a) {
 				seen_newline = 1;
+				if (!i) {
+					empty_string = 1;
+					*valid = 0;
+				} else if (ret[i - 1] == 0x20) {
+					trailing_space = 1;
+					*valid = 0;
+				}
 			} else if (x[i] == 0x20) {
 				ret[i] = x[i];
 			} else {
-				*valid_termination = 0;
+				has_valid_string_termination = 0;
+				*valid = 0;
 				return ret;
 			}
-		} else {
-			if (x[i] != 0x20) {
-				*valid_termination = 0;
-				return ret;
-			}
+		} else if (x[i] != 0x20) {
+			has_valid_string_termination = 0;
+			*valid = 0;
+			return ret;
 		}
+	}
+	/* Does the string end with a space? */
+	if (!seen_newline && ret[len - 1] == 0x20) {
+		trailing_space = 1;
+		*valid = 0;
 	}
 
 	return ret;
@@ -605,7 +623,6 @@ static void print_standard_timing(uint8_t b1, uint8_t b2)
 /* 1 means valid data */
 static int detailed_block(unsigned char *x, int in_extension)
 {
-	static unsigned char name[53];
 	int ha, hbl, hso, hspw, hborder, va, vbl, vso, vspw, vborder;
 	int refresh, pixclk_khz;
 	int i;
@@ -726,17 +743,9 @@ static int detailed_block(unsigned char *x, int in_extension)
 			return 1;
 		}
 		case 0xFC:
-			/* XXX should check for spaces after the \n */
-			/* XXX check: terminated with 0x0A, padded with 0x20 */
 			has_name_descriptor = 1;
-			if (strchr((char *)name, '\n')) return 1;
-			strncat((char *)name, (char *)x + 5, 13);
-			if (strchr((char *)name, '\n')) {
-				name_descriptor_terminated = 1;
-				printf("Monitor name: %s\n",
-				       extract_string(name, &has_valid_string_termination,
-						      strlen((char *)name)));
-			}
+			printf("Monitor name: %s\n",
+			       extract_string(x + 5, &has_valid_name_descriptor, 13));
 			return 1;
 		case 0xFD: {
 			int h_max_offset = 0, h_min_offset = 0;
@@ -893,13 +902,14 @@ static int detailed_block(unsigned char *x, int in_extension)
 			 * TODO: Two of these in a row, in the third and fourth slots,
 			 * seems to be specified by SPWG: http://www.spwg.org/
 			 */
+			has_ascii_string = 1;
 			printf("ASCII string: %s\n",
-			       extract_string(x + 5, &has_valid_string_termination, 13));
+			       extract_string(x + 5, &has_valid_ascii_string, 13));
 			return 1;
 		case 0xFF:
+			has_serial_string = 1;
 			printf("Serial number: %s\n",
-			       extract_string(x + 5, &has_valid_string_termination, 13));
-			has_valid_serial_string = 1;
+			       extract_string(x + 5, &has_valid_serial_string, 13));
 			return 1;
 		default:
 			printf("Unknown monitor description type %d\n", x[3]);
@@ -2935,7 +2945,6 @@ int main(int argc, char **argv)
 		    !has_valid_string_termination ||
 		    !has_valid_descriptor_pad ||
 		    !has_name_descriptor ||
-		    !name_descriptor_terminated ||
 		    !has_preferred_timing ||
 		    (!claims_one_point_four && !has_range_descriptor))
 			conformant = 0;
@@ -2957,8 +2966,6 @@ int main(int argc, char **argv)
 			printf("\tHDMI Forum VSDB Max TMDS rate is > 0 and <= 340 or > 600\n");
 		if (!has_name_descriptor)
 			printf("\tMissing name descriptor\n");
-		else if (!name_descriptor_terminated)
-			printf("\tName descriptor not terminated with a newline\n");
 		if (!has_preferred_timing)
 			printf("\tMissing preferred timing\n");
 		if (!has_range_descriptor)
@@ -2968,16 +2975,13 @@ int main(int argc, char **argv)
 		if (!has_valid_string_termination) /* Likewise */
 			printf("\tDetailed block string not properly terminated\n");
 	} else if (claims_one_point_two) {
-		if (nonconformant_digital_display ||
-		    (has_name_descriptor && !name_descriptor_terminated))
+		if (nonconformant_digital_display)
 			conformant = 0;
 		if (!conformant)
 			printf("EDID block does NOT conform to EDID 1.2!\n");
 		if (nonconformant_digital_display)
 			printf("\tDigital display field contains garbage: %x\n",
 			       nonconformant_digital_display);
-		if (has_name_descriptor && !name_descriptor_terminated)
-			printf("\tName descriptor not terminated with a newline\n");
 	} else if (claims_one_point_oh) {
 		if (seen_non_detailed_descriptor)
 			conformant = 0;
@@ -3017,7 +3021,12 @@ int main(int argc, char **argv)
 	    !has_valid_dummy_block ||
 	    !has_valid_descriptor_ordering ||
 	    !has_valid_range_descriptor ||
-	    !manufacturer_name_well_formed) {
+	    !manufacturer_name_well_formed ||
+	    (has_name_descriptor && !has_valid_name_descriptor) ||
+	    (has_serial_string && !has_valid_serial_string) ||
+	    (has_ascii_string && !has_valid_ascii_string) ||
+	    empty_string ||
+	    trailing_space) {
 		conformant = 0;
 		printf("EDID block does not conform at all!\n");
 		if (nonconformant_extension)
@@ -3045,6 +3054,16 @@ int main(int argc, char **argv)
 			printf("\tRange descriptor contains garbage\n");
 		if (!has_valid_max_dotclock)
 			printf("\tEDID 1.4 block does not set max dotclock\n");
+		if (has_name_descriptor && !has_valid_name_descriptor)
+			printf("\tInvalid Monitor Name descriptor\n");
+		if (has_ascii_string && !has_valid_ascii_string)
+			printf("\tInvalid ASCII string\n");
+		if (has_serial_string && !has_valid_serial_string)
+			printf("\tInvalid serial string\n");
+		if (trailing_space)
+			printf("\tString contains one or more trailing spaces\n");
+		if (empty_string)
+			printf("\tString is empty\n");
 	}
 
 	if (!has_valid_cta_checksum) {
