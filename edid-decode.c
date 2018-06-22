@@ -1618,13 +1618,34 @@ static void cta_hdmi_block(const unsigned char *x, unsigned int length)
 	}
 }
 
+static const char *max_frl_rates[] = {
+	"Not Supported",
+	"3 Gbps per lane on 3 lanes",
+	"3 and 6 Gbps per lane on 3 lanes",
+	"3 and 6 Gbps per lane on 3 lanes, 6 Gbps on 4 lanes",
+	"3 and 6 Gbps per lane on 3 lanes, 6 and 8 Gbps on 4 lanes",
+	"3 and 6 Gbps per lane on 3 lanes, 6, 8 and 10 Gbps on 4 lanes",
+	"3 and 6 Gbps per lane on 3 lanes, 6, 8, 10 and 12 Gbps on 4 lanes",
+};
+
+static const char *dsc_max_slices[] = {
+	"Not Supported",
+	"up to 1 slice and up to (340 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 2 slices and up to (340 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 4 slices and up to (340 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 8 slices and up to (340 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 8 slices and up to (400 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 12 slices and up to (400 MHz/Ksliceadjust) pixel clock per slice",
+	"up to 16 slices and up to (400 MHz/Ksliceadjust) pixel clock per slice",
+};
+
 static void cta_hf_block(const unsigned char *x, unsigned int length)
 {
+	unsigned rate = x[4] * 5;
+
 	printf(" (HDMI Forum)\n");
 	printf("    Version: %u\n", x[3]);
-	if (x[4]) {
-		unsigned rate = x[4] * 5;
-
+	if (rate) {
 		printf("    Maximum TMDS Character Rate: %uMHz\n", rate);
 		if ((rate && rate <= 340) || rate > 600)
 			nonconformant_hf_vsdb_tmds_rate = 1;
@@ -1633,6 +1654,8 @@ static void cta_hf_block(const unsigned char *x, unsigned int length)
 		printf("    SCDC Present\n");
 	if (x[5] & 0x40)
 		printf("    SCDC Read Request Capable\n");
+	if (x[5] & 0x10)
+		printf("    Supports Color Content Bits Per Component Indication\n");
 	if (x[5] & 0x08)
 		printf("    Supports scrambling for <= 340 Mcsc\n");
 	if (x[5] & 0x04)
@@ -1641,12 +1664,81 @@ static void cta_hf_block(const unsigned char *x, unsigned int length)
 		printf("    Supports 3D Dual View signaling\n");
 	if (x[5] & 0x01)
 		printf("    Supports 3D OSD Disparity signaling\n");
+	if (x[6] & 0xf0) {
+		unsigned max_frl_rate = x[6] >> 4;
+
+		printf("    Max Fix Rate Link: ");
+		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
+			printf("Reserved\n");
+		else
+			printf("%s\n", max_frl_rates[max_frl_rate]);
+		if (max_frl_rate == 1 && rate < 300)
+			nonconformant_hf_vsdb_tmds_rate = 1;
+		else if (max_frl_rate >= 2 && rate < 600)
+			nonconformant_hf_vsdb_tmds_rate = 1;
+	}
 	if (x[6] & 0x04)
 		printf("    Supports 16-bits/component Deep Color 4:2:0 Pixel Encoding\n");
 	if (x[6] & 0x02)
 		printf("    Supports 12-bits/component Deep Color 4:2:0 Pixel Encoding\n");
 	if (x[6] & 0x01)
 		printf("    Supports 10-bits/component Deep Color 4:2:0 Pixel Encoding\n");
+
+	if (length <= 7)
+		return;
+
+	if (x[7] & 0x20)
+		printf("    Supports Mdelta\n");
+	if (x[7] & 0x10)
+		printf("    Supports media rates below VRRmin (CinemaVRR)\n");
+	if (x[7] & 0x08)
+		printf("    Supports negative Mvrr values\n");
+	if (x[7] & 0x04)
+		printf("    Supports Fast Vactive\n");
+	if (x[7] & 0x02)
+		printf("    Supports Auto Low-Latency Mode\n");
+	if (x[7] & 0x01)
+		printf("    Supports a FAPA in blanking after first active video line\n");
+
+	if (length <= 8)
+		return;
+
+	printf("    VRRmin: %d\n", x[8] & 0x3f);
+	printf("    VRRmax: %d\n", (x[8] & 0xc0) << 2 | x[9]);
+
+	if (length <= 10)
+		return;
+
+	if (x[10] & 0x80)
+		printf("    Supports VESA DSC 1.2a compression\n");
+	if (x[10] & 0x40)
+		printf("    Supports Compressed Video Transport for 4:2:0 Pixel Encoding\n");
+	if (x[10] & 0x08)
+		printf("    Supports Compressed Video Transport at any valid 1/16th bit bpp\n");
+	if (x[10] & 0x04)
+		printf("    Supports 16 bpc Compressed Video Transport\n");
+	if (x[10] & 0x02)
+		printf("    Supports 12 bpc Compressed Video Transport\n");
+	if (x[10] & 0x01)
+		printf("    Supports 10 bpc Compressed Video Transport\n");
+	if (x[11] & 0xf) {
+		unsigned max_slices = x[11] & 0xf;
+
+		if (max_slices < ARRAY_SIZE(dsc_max_slices))
+			printf("    Supports %s\n", dsc_max_slices[max_slices]);
+	}
+	if (x[11] & 0xf0) {
+		unsigned max_frl_rate = x[11] >> 4;
+
+		printf("    DSC Max Fix Rate Link: ");
+		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
+			printf("Reserved\n");
+		else
+			printf("%s\n", max_frl_rates[max_frl_rate]);
+	}
+	if (x[12] & 0x3f)
+		printf("    Maximum number of bytes in a line of chunks: %u\n",
+		       1024 * (1 + (x[12] & 0x3f)));
 }
 
 DEFINE_FIELD("YCbCr quantization", YCbCr_quantization, 7, 7,
