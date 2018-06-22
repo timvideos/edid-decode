@@ -1097,7 +1097,7 @@ static void cta_audio_block(unsigned char *x)
 			       (x[i+2] & 0x02) ? " 20" : "",
 			       (x[i+2] & 0x01) ? " 16" : "");
 		} else if (format <= 8) {
-			printf("      Maximum bit rate: %d kHz\n", x[i+2] * 8);
+			printf("      Maximum bit rate: %d kb/s\n", x[i+2] * 8);
 		} else if (format == 14) {
 			printf("      Profile: %d\n", x[i+2] & 7);
 		} else if ((ext_format >= 4 && ext_format <= 6) ||
