@@ -168,7 +168,7 @@ static void _decode(struct field **fields, int n_fields, int data, const char *p
 #define decode(fields, data, prefix)    \
 	_decode(fields, ARRAY_SIZE(fields), data, prefix)
 
-static char *manufacturer_name(unsigned char *x)
+static char *manufacturer_name(const unsigned char *x)
 {
 	static char name[4];
 
@@ -314,7 +314,7 @@ static void edid_cvt_mode(int HDisplay, int VDisplay,
 	max_pixclk_khz = max(max_pixclk_khz, Clock);
 }
 
-static int detailed_cvt_descriptor(unsigned char *x, int first)
+static int detailed_cvt_descriptor(const unsigned char *x, int first)
 {
 	const unsigned char empty[3] = { 0, 0, 0 };
 	const char *ratio;
@@ -410,7 +410,7 @@ static int detailed_cvt_descriptor(unsigned char *x, int first)
 }
 
 /* extract a string from a detailed subblock, checking for termination */
-static char *extract_string(unsigned char *x, int *valid, int len)
+static char *extract_string(const unsigned char *x, int *valid, int len)
 {
 	static char ret[EDID_PAGE_SIZE];
 	int i, seen_newline = 0;
@@ -621,7 +621,7 @@ static void print_standard_timing(uint8_t b1, uint8_t b2)
 }
 
 /* 1 means valid data */
-static int detailed_block(unsigned char *x, int in_extension)
+static int detailed_block(const unsigned char *x, int in_extension)
 {
 	int ha, hbl, hso, hspw, hborder, va, vbl, vso, vspw, vborder;
 	int refresh, pixclk_khz;
@@ -997,7 +997,7 @@ static int detailed_block(unsigned char *x, int in_extension)
 	return 1;
 }
 
-static int do_checksum(unsigned char *x, size_t len)
+static int do_checksum(const unsigned char *x, size_t len)
 {
 	unsigned char check = x[len - 1];
 	unsigned char sum = 0;
@@ -1059,7 +1059,7 @@ static const char *audio_format(unsigned char x)
 	return "BROKEN"; /* can't happen */
 }
 
-static void cta_audio_block(unsigned char *x)
+static void cta_audio_block(const unsigned char *x)
 {
 	int i, format, ext_format = 0;
 	int length = x[0] & 0x1f;
@@ -1302,7 +1302,7 @@ static const struct edid_cta_mode *vic_to_mode(unsigned char vic)
 	return NULL;
 }
 
-static void cta_svd(unsigned char *x, int n, int for_ycbcr420)
+static void cta_svd(const unsigned char *x, int n, int for_ycbcr420)
 {
 	int i;
 
@@ -1361,21 +1361,21 @@ static void cta_svd(unsigned char *x, int n, int for_ycbcr420)
 	}
 }
 
-static void cta_video_block(unsigned char *x)
+static void cta_video_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 
 	cta_svd(x + 1, length, 0);
 }
 
-static void cta_y420vdb(unsigned char *x)
+static void cta_y420vdb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 
 	cta_svd(x + 2, length - 1, 1);
 }
 
-static void cta_y420cmdb(unsigned char *x)
+static void cta_y420cmdb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int i;
@@ -1390,7 +1390,7 @@ static void cta_y420cmdb(unsigned char *x)
 	}
 }
 
-static void cta_vfpdb(unsigned char *x)
+static void cta_vfpdb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int i;
@@ -1429,7 +1429,7 @@ static struct {
 	{"4096x2160@24Hz 256:135", 24, 54000, 297000},
 };
 
-static void cta_hdmi_block(unsigned char *x)
+static void cta_hdmi_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 
@@ -1613,7 +1613,7 @@ static void cta_hdmi_block(unsigned char *x)
 	}
 }
 
-static void cta_hf_block(unsigned char *x)
+static void cta_hf_block(const unsigned char *x)
 {
 	printf(" (HDMI Forum)\n");
 	printf("    Version: %u\n", x[4]);
@@ -1698,7 +1698,7 @@ static const char *speaker_map[] = {
 	"LSd/RSd - Left/Right Surround Direct",
 };
 
-static void cta_sadb(unsigned char *x)
+static void cta_sadb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int i;
@@ -1722,7 +1722,7 @@ static float decode_uchar_as_float(unsigned char x)
 	return s / 64.0;
 }
 
-static void cta_rcdb(unsigned char *x)
+static void cta_rcdb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	uint32_t spm = ((x[5] << 16) | (x[4] << 8) | x[3]);
@@ -1782,7 +1782,7 @@ static const char *speaker_location[] = {
 	"RS - Right Surround",
 };
 
-static void cta_sldb(unsigned char *x)
+static void cta_sldb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 
@@ -1810,7 +1810,7 @@ static void cta_sldb(unsigned char *x)
 	}
 }
 
-static void cta_vcdb(unsigned char *x)
+static void cta_vcdb(const unsigned char *x)
 {
 	unsigned char d = x[2];
 
@@ -1828,7 +1828,7 @@ static const char *colorimetry_map[] = {
 	"BT2020RGB",
 };
 
-static void cta_colorimetry_block(unsigned char *x)
+static void cta_colorimetry_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int i;
@@ -1850,7 +1850,7 @@ static const char *eotf_map[] = {
 	"Hybrid Log-Gamma",
 };
 
-static void cta_hdr_static_metadata_block(unsigned char *x)
+static void cta_hdr_static_metadata_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int i;
@@ -1883,7 +1883,7 @@ static void cta_hdr_static_metadata_block(unsigned char *x)
 		       x[6], (50.0 * pow(2, x[4] / 32.0)) * pow(x[6] / 255.0, 2) / 100.0);
 }
 
-static void cta_hdr_dyn_metadata_block(unsigned char *x)
+static void cta_hdr_dyn_metadata_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 
@@ -1913,7 +1913,7 @@ static void cta_hdr_dyn_metadata_block(unsigned char *x)
 	}
 }
 
-static void cta_ifdb(unsigned char *x)
+static void cta_ifdb(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int len_hdr = x[2] >> 5;
@@ -1943,7 +1943,7 @@ static void cta_ifdb(unsigned char *x)
 	}
 }
 
-static void cta_hdmi_audio_block(unsigned char *x)
+static void cta_hdmi_audio_block(const unsigned char *x)
 {
 	int length = x[0] & 0x1f;
 	int num_descs;
@@ -2008,7 +2008,7 @@ static void cta_hdmi_audio_block(unsigned char *x)
 	}
 }
 
-static void cta_block(unsigned char *x)
+static void cta_block(const unsigned char *x)
 {
 	static int last_block_was_hdmi_vsdb;
 	unsigned int oui;
@@ -2131,12 +2131,12 @@ static void cta_block(unsigned char *x)
 	last_block_was_hdmi_vsdb = 0;
 }
 
-static int parse_cta(unsigned char *x)
+static int parse_cta(const unsigned char *x)
 {
 	int ret = 0;
 	int version = x[1];
 	int offset = x[2];
-	unsigned char *detailed;
+	const unsigned char *detailed;
 
 	if (version >= 1) do {
 		if (version == 1 && x[3] != 0)
@@ -2181,7 +2181,7 @@ static int parse_cta(unsigned char *x)
 	return ret;
 }
 
-static int parse_displayid_detailed_timing(unsigned char *x)
+static int parse_displayid_detailed_timing(const unsigned char *x)
 {
 	int ha, hbl, hso, hspw;
 	int va, vbl, vso, vspw;
@@ -2257,7 +2257,7 @@ static int parse_displayid_detailed_timing(unsigned char *x)
 	return 1;
 }
 
-static int parse_displayid(unsigned char *x)
+static int parse_displayid(const unsigned char *x)
 {
 	int version = x[1];
 	int length = x[2];
@@ -2358,12 +2358,12 @@ static int parse_displayid(unsigned char *x)
 }
 /* generic extension code */
 
-static void extension_version(unsigned char *x)
+static void extension_version(const unsigned char *x)
 {
 	printf("Extension version: %d\n", x[1]);
 }
 
-static int parse_extension(unsigned char *x)
+static int parse_extension(const unsigned char *x)
 {
 	int conformant_extension;
 	printf("\n");
@@ -2599,7 +2599,7 @@ static unsigned char *extract_edid(int fd)
 	return out;
 }
 
-static void print_subsection(char *name, unsigned char *edid, int start,
+static void print_subsection(char *name, const unsigned char *edid, int start,
 			     int end)
 {
 	int i;
@@ -2612,7 +2612,7 @@ static void print_subsection(char *name, unsigned char *edid, int start,
 	printf("\n");
 }
 
-static void dump_breakdown(unsigned char *edid)
+static void dump_breakdown(const unsigned char *edid)
 {
 	printf("Extracted contents:\n");
 	print_subsection("header", edid, 0, 7);
