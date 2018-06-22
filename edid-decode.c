@@ -2505,6 +2505,33 @@ static unsigned char *extract_edid(int fd)
 		return out;
 	}
 
+	start = strstr(ret, "<BLOCK");
+	if (start) {
+		/* Parse QuantumData 980 EDID files */
+		do {
+			start = strstr(start, ">");
+			if (start)
+				out = realloc(out, out_index + 128);
+			if (!start || !out) {
+				free(ret);
+				free(out);
+				return NULL;
+			}
+			start++;
+			for (i = 0; i < 256; i += 2) {
+				char buf[3];
+
+				buf[0] = start[i];
+				buf[1] = start[i + 1];
+				buf[2] = 0;
+				out[out_index++] = strtol(buf, NULL, 16);
+			}
+			start = strstr(start, "<BLOCK");
+		} while (start);
+		edid_lines = out_index >> 4;
+		return out;
+	}
+
 	/* Is the EDID provided in hex? */
 	for (i = 0; i < 32 && (isspace(ret[i]) || ret[i] == ',' ||
 			       tolower(ret[i]) == 'x' || isxdigit(ret[i])); i++);
