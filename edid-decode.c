@@ -25,6 +25,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -102,6 +103,47 @@ static unsigned supported_hdmi_vic_codes = 0;
 static unsigned supported_hdmi_vic_vsb_codes = 0;
 
 static int conformant = 1;
+
+enum output_format {
+	OUT_FMT_DEFAULT,
+	OUT_FMT_HEX,
+	OUT_FMT_RAW,
+	OUT_FMT_CARRAY
+};
+
+/* Options */
+enum Option {
+	OptHelp = 'h',
+	OptOutputFormat = 'o',
+	OptLast = 256
+};
+
+static char options[OptLast];
+
+static struct option long_options[] = {
+	/* Please keep in alphabetical order of the short option.
+	   That makes it easier to see which options are still free. */
+	{ "help", no_argument, 0, OptHelp },
+	{ "output-format", required_argument, 0, OptOutputFormat },
+	{ 0, 0, 0, 0 }
+};
+
+static void usage(void)
+{
+	printf("Usage: edid-decode <options> [in [out]]\n"
+	       "  [in]                  EDID file to parse. Read from standard input if none given\n"
+	       "                        or if the input filename is '-'.\n"
+	       "  [out]                 Output the read EDID to this file. Write to standard output\n"
+	       "                        if the output filename is '-'.\n"
+	       "\nOptions:\n"
+	       "  -h, --help            display this help message\n"
+	       "  -o, --output-format=<fmt>\n"
+	       "                        if [out] is specified, then write the EDID in this format\n"
+	       "                        <fmt> is one of:\n"
+	       "                        hex:    hex numbers in ascii text (default for stdout)\n"
+	       "                        raw:    binary data (default unless writing to stdout)\n"
+	       "                        carray: c-program struct\n");
+}
 
 struct value {
 	int value;
@@ -2738,9 +2780,89 @@ static void dump_breakdown(const unsigned char *edid)
 	printf("\n");
 }
 
-int main(int argc, char **argv)
+static unsigned char crc_calc(const unsigned char *b)
 {
-	int fd, ofd;
+	unsigned char sum = 0;
+	int i;
+
+	for (i = 0; i < 127; i++)
+		sum += b[i];
+	return 256 - sum;
+}
+
+static int crc_ok(const unsigned char *b)
+{
+	return crc_calc(b) == b[127];
+}
+
+static void hexdumpedid(FILE *f, const unsigned char *edid, unsigned size)
+{
+	unsigned b, i, j;
+
+	for (b = 0; b < size / 128; b++) {
+		const unsigned char *buf = edid + 128 * b;
+
+		if (b)
+			fprintf(f, "\n");
+		for (i = 0; i < 128; i += 0x10) {
+			fprintf(f, "%02x", buf[i]);
+			for (j = 1; j < 0x10; j++) {
+				fprintf(f, " %02x", buf[i + j]);
+			}
+			fprintf(f, "\n");
+		}
+		if (!crc_ok(buf))
+			fprintf(f, "Block %u has a checksum error (should be 0x%02x)\n",
+					b, crc_calc(buf));
+	}
+}
+
+static void carraydumpedid(FILE *f, const unsigned char *edid, unsigned size)
+{
+	unsigned b, i, j;
+
+	fprintf(f, "unsigned char edid[] = {\n");
+	for (b = 0; b < size / 128; b++) {
+		const unsigned char *buf = edid + 128 * b;
+
+		if (b)
+			fprintf(f, "\n");
+		for (i = 0; i < 128; i += 8) {
+			fprintf(f, "\t0x%02x,", buf[i]);
+			for (j = 1; j < 8; j++) {
+				fprintf(f, " 0x%02x,", buf[i + j]);
+			}
+			fprintf(f, "\n");
+		}
+		if (!crc_ok(buf))
+			fprintf(f, "\t/* Block %u has a checksum error (should be 0x%02x) */\n",
+					b, crc_calc(buf));
+	}
+	fprintf(f, "};\n");
+}
+
+static void write_edid(FILE *f, const unsigned char *edid, unsigned size,
+		       enum output_format out_fmt)
+{
+	switch (out_fmt) {
+	default:
+	case OUT_FMT_HEX:
+		hexdumpedid(f, edid, size);
+		break;
+	case OUT_FMT_RAW:
+		fwrite(edid, size, 1, f);
+		break;
+	case OUT_FMT_CARRAY:
+		carraydumpedid(f, edid, size);
+		break;
+	}
+}
+
+static int edid_from_file(const char *from_file, const char *to_file,
+			  enum output_format out_fmt)
+{
+	int fd;
+	FILE *out = NULL;
 	unsigned char *edid;
 	unsigned char *x;
 	time_t the_time;
@@ -2748,51 +2870,43 @@ int main(int argc, char **argv)
 	int analog, i;
 	unsigned col_x, col_y;
 
-	switch (argc) {
-	case 1:
+	if (!from_file || !strcmp(from_file, "-")) {
 		fd = 0;
-		ofd = -1;
-		break;
-	case 2:
-		if ((fd = open(argv[1], O_RDONLY)) == -1) {
-			perror(argv[1]);
-			return 1;
+	} else if ((fd = open(from_file, O_RDONLY)) == -1) {
+		perror(from_file);
+		return -1;
+	}
+	if (to_file) {
+		if (!strcmp(to_file, "-")) {
+			out = stdout;
+		} else if ((out = fopen(to_file, "w")) == NULL) {
+			perror(to_file);
+			return -1;
 		}
-		ofd = -1;
-		break;
-	case 3:
-		if ((fd = open(argv[1], O_RDONLY)) == -1) {
-			perror(argv[1]);
-			return 1;
-		}
-		if ((ofd = open(argv[2], O_WRONLY)) == -1) {
-			perror(argv[2]);
-			return 1;
-		}
-		break;
-	default:
-		fprintf(stderr, "What do you want from me?\n");
-		return 1;
+		if (out_fmt == OUT_FMT_DEFAULT)
+			out_fmt = out == stdout ? OUT_FMT_HEX : OUT_FMT_RAW;
 	}
 
 	edid = extract_edid(fd);
 	if (!edid) {
 		fprintf(stderr, "edid extract failed\n");
-		return 1;
+		return -1;
 	}
 	if (fd != 0)
 		close(fd);
 
-	if (ofd != -1) {
-		write(ofd, edid, edid_lines * 16);
-		close(ofd);
+	if (out) {
+		write_edid(out, edid, edid_lines * 16, out_fmt);
+		if (out == stdout)
+			return 0;
+		fclose(out);
 	}
 
 	dump_breakdown(edid);
 
 	if (!edid || memcmp(edid, "\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00", 8)) {
 		fprintf(stderr, "No header found\n");
-		return 1;
+		return -1;
 	}
 
 	printf("EDID version: %hd.%hd\n", edid[0x12], edid[0x13]);
@@ -3190,8 +3304,67 @@ int main(int argc, char **argv)
 		printf("Warning: HDMI VIC Codes must have their CTA-861 VIC equivalents in the VSB\n");
 
 	free(edid);
+	return conformant ? 0 : -2;
+}
 
-	return !conformant;
+int main(int argc, char **argv)
+{
+	char short_options[26 * 2 * 2 + 1];
+	enum output_format out_fmt = OUT_FMT_DEFAULT;
+	int ch;
+	int i;
+
+	while (1) {
+		int option_index = 0;
+		int idx = 0;
+
+		for (i = 0; long_options[i].name; i++) {
+			if (!isalpha(long_options[i].val))
+				continue;
+			short_options[idx++] = long_options[i].val;
+			if (long_options[i].has_arg == required_argument)
+				short_options[idx++] = ':';
+		}
+		short_options[idx] = 0;
+		ch = getopt_long(argc, argv, short_options,
+				 long_options, &option_index);
+		if (ch == -1)
+			break;
+
+		options[(int)ch] = 1;
+		switch (ch) {
+		case OptHelp:
+			usage();
+			return -1;
+		case OptOutputFormat:
+			if (!strcmp(optarg, "hex")) {
+				out_fmt = OUT_FMT_HEX;
+			} else if (!strcmp(optarg, "raw")) {
+				out_fmt = OUT_FMT_RAW;
+			} else if (!strcmp(optarg, "carray")) {
+				out_fmt = OUT_FMT_CARRAY;
+			} else {
+				usage();
+				exit(1);
+			}
+			break;
+		case ':':
+			fprintf(stderr, "Option `%s' requires a value\n",
+				argv[optind]);
+			usage();
+			return -1;
+		case '?':
+			fprintf(stderr, "Unknown argument `%s'\n",
+				argv[optind]);
+			usage();
+			return -1;
+		}
+	}
+	if (optind == argc)
+		return edid_from_file(NULL, NULL, out_fmt);
+	if (optind == argc - 1)
+		return edid_from_file(argv[optind], NULL, out_fmt);
+	return edid_from_file(argv[optind], argv[optind + 1], out_fmt);
 }
 
 /*

@@ -4,15 +4,15 @@
 .SH NAME
 edid-decode - Decode EDID data in human-readable format
 .SH SYNOPSIS
-.B edid-decode [in] [out]
+.B edid-decode <options> [in [out]]
 .SH DESCRIPTION
 .B edid-decode
-decodes EDID monitor description data in human-readable format.  It takes
-zero, one, or two arguments.  If invoked with no arguments it reads from
-standard input and writes to standard output.  With one argument, the file
-named by the argument is read instead.  With two arguments, normal output
-is suppressed, and the binary EDID blob is written to the file named by
-the second argument.
+decodes EDID monitor description data in human-readable format.
+If [in] is not given, or [in] is '-', then the EDID will be read from
+standard input. If [out] is given then the EDID that was read from [in]
+is written to [out] or to standard output if [out] is '-'. By default
+the output is written as a hex dump when writing to standard output or
+a raw EDID if written to a file.
 .PP
 Input files may be raw binaries or ASCII text.  ASCII input is scanned for
 hex dumps; heuristics are included to search for hexdumps in
@@ -23,6 +23,23 @@ log file formats, otherwise the data is treated as a raw hexdump.  EDID blocks
 for connected monitors can be found in
 .B /sys/class/drm/*/edid
 on modern Linux systems with kernel modesetting support.
+
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Prints the help message.
+.TP
+\fB\-o\fR, \fB\-\-output\-format\fR=\fI<fmt>\fR
+If [out] is specified, then write the EDID in format \fI<fmt>\fR.
+.br
+The output format can be one of:
+.br
+hex: hex numbers in ascii text (default for stdout)
+.br
+raw: binary data (default unless writing to stdout)
+.br
+carray: c-program struct
+
 .PP
 .SH NOTES
 Not all fields are decoded, or decoded completely.  Some fields' decoding
