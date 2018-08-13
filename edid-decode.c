@@ -111,8 +111,14 @@ enum output_format {
 	OUT_FMT_CARRAY
 };
 
-/* Options */
+/*
+ * Options
+ * Please keep in alphabetical order of the short option.
+ * That makes it easier to see which options are still free.
+ */
 enum Option {
+	OptCheck = 'c',
+	OptExtract = 'e',
 	OptHelp = 'h',
 	OptOutputFormat = 'o',
 	OptLast = 256
@@ -121,10 +127,10 @@ enum Option {
 static char options[OptLast];
 
 static struct option long_options[] = {
-	/* Please keep in alphabetical order of the short option.
-	   That makes it easier to see which options are still free. */
 	{ "help", no_argument, 0, OptHelp },
 	{ "output-format", required_argument, 0, OptOutputFormat },
+	{ "extract", no_argument, 0, OptExtract },
+	{ "check", no_argument, 0, OptCheck },
 	{ 0, 0, 0, 0 }
 };
 
@@ -136,13 +142,15 @@ static void usage(void)
 	       "  [out]                 Output the read EDID to this file. Write to standard output\n"
 	       "                        if the output filename is '-'.\n"
 	       "\nOptions:\n"
-	       "  -h, --help            display this help message\n"
 	       "  -o, --output-format=<fmt>\n"
 	       "                        if [out] is specified, then write the EDID in this format\n"
 	       "                        <fmt> is one of:\n"
 	       "                        hex:    hex numbers in ascii text (default for stdout)\n"
 	       "                        raw:    binary data (default unless writing to stdout)\n"
-	       "                        carray: c-program struct\n");
+	       "                        carray: c-program struct\n"
+	       "  -c, --check           check if the EDID conforms to the standards\n"
+	       "  -e, --extract         extract the contents of the first block in hex values\n"
+	       "  -h, --help            display this help message\n");
 }
 
 struct value {
@@ -2902,7 +2910,8 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		fclose(out);
 	}
 
-	dump_breakdown(edid);
+	if (options[OptExtract])
+		dump_breakdown(edid);
 
 	if (!edid || memcmp(edid, "\x00\xFF\xFF\xFF\xFF\xFF\xFF\x00", 8)) {
 		fprintf(stderr, "No header found\n");
@@ -3154,6 +3163,11 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	for (edid_lines /= 8; edid_lines > 1; edid_lines--) {
 		x += EDID_PAGE_SIZE;
 		nonconformant_extension += parse_extension(x);
+	}
+
+	if (!options[OptCheck]) {
+		free(edid);
+		return 0;
 	}
 
 	if (claims_one_point_three) {

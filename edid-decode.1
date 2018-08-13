@@ -39,6 +39,14 @@ hex: hex numbers in ascii text (default for stdout)
 raw: binary data (default unless writing to stdout)
 .br
 carray: c-program struct
+.TP
+\fB\-c\fR, \fB\-\-check\fR
+Check if the EDID conforms to the standards.
+.TP
+\fB\-e\fR, \fB\-\-extract\fR
+Extract the contents of the first block in hex values.
+This was always done in old edid-decode versions. To get
+the same behavior add this option.
 
 .PP
 .SH NOTES
