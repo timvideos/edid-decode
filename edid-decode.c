@@ -3241,9 +3241,14 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		else
 			printf("Warning: ");
 		printf("One or more of the timings is out of range of the Monitor Ranges:\n");
-		printf("  Vertical Freq: %d - %d Hz\n", min_vert_freq_hz, max_vert_freq_hz);
-		printf("  Horizontal Freq: %d - %d Hz\n", min_hor_freq_hz, max_hor_freq_hz);
-		printf("  Maximum Clock: %.3f MHz\n", max_pixclk_khz / 1000.0);
+		printf("  Vertical Freq: %d - %d Hz (Monitor: %d - %d Hz)\n",
+		       min_vert_freq_hz, max_vert_freq_hz,
+		       mon_min_vert_freq_hz, mon_max_vert_freq_hz);
+		printf("  Horizontal Freq: %d - %d Hz (Monitor: %d - %d Hz)\n",
+		       min_hor_freq_hz, max_hor_freq_hz,
+		       mon_min_hor_freq_hz, mon_max_hor_freq_hz);
+		printf("  Maximum Clock: %.3f MHz (Monitor: %.3f MHz)\n",
+		       max_pixclk_khz / 1000.0, mon_max_pixclk_khz / 1000.0);
 	}
 
 	if (nonconformant_extension ||
