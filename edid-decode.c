@@ -1077,7 +1077,7 @@ static const char *audio_ext_format(unsigned char x)
 	case 6: return "MPEG-4 AAC LC";
 	case 7: return "DRA";
 	case 8: return "MPEG-4 HE AAC + MPEG Surround";
-	case 10: return "MPEG-4 AAC + MPEG Surround";
+	case 10: return "MPEG-4 AAC LC + MPEG Surround";
 	case 11: return "MPEG-H 3D Audio";
 	case 12: return "AC-4";
 	case 13: return "L-PCM 3D Audio";
@@ -1109,6 +1109,21 @@ static const char *audio_format(unsigned char x)
 	return "BROKEN"; /* can't happen */
 }
 
+static const char *mpeg_h_3d_audio_level(unsigned char x)
+{
+	switch (x) {
+	case 0: return "Unspecified";
+	case 1: return "Level 1";
+	case 2: return "Level 2";
+	case 3: return "Level 3";
+	case 4: return "Level 4";
+	case 5: return "Level 5";
+	case 6: return "Reserved";
+	case 7: return "Reserved";
+	}
+	return "BROKEN"; /* can't happen */
+}
+
 static void cta_audio_block(const unsigned char *x, unsigned int length)
 {
 	int i, format, ext_format = 0;
@@ -1125,6 +1140,9 @@ static void cta_audio_block(const unsigned char *x, unsigned int length)
 		if (format != 15)
 			printf("    %s, max channels %d\n", audio_format(format),
 			       (x[i] & 0x07)+1);
+		else if (ext_format == 11)
+			printf("    %s, MPEG-H 3D Audio Level: %s\n", audio_ext_format(ext_format),
+			       mpeg_h_3d_audio_level(x[i] & 0x07));
 		else if (ext_format == 13)
 			printf("    %s, max channels %d\n", audio_ext_format(ext_format),
 			       (((x[i + 1] & 0x80) >> 3) | ((x[i] & 0x80) >> 4) |
@@ -1149,6 +1167,8 @@ static void cta_audio_block(const unsigned char *x, unsigned int length)
 			printf("      Maximum bit rate: %d kb/s\n", x[i+2] * 8);
 		} else if (format == 14) {
 			printf("      Profile: %d\n", x[i+2] & 7);
+		} else if (ext_format == 11 && (x[i+2] & 1)) {
+			printf("      Supports MPEG-H 3D Audio Low Complexity Profile\n");
 		} else if ((ext_format >= 4 && ext_format <= 6) ||
 			   ext_format == 8 || ext_format == 10) {
 			printf("      AAC audio frame lengths:%s%s\n",
@@ -1157,6 +1177,8 @@ static void cta_audio_block(const unsigned char *x, unsigned int length)
 			if (ext_format >= 8 && (x[i+2] & 1))
 				printf("      Supports %s signaled MPEG Surround data\n",
 				       (x[i+2] & 1) ? "implicitly and explicitly" : "only implicitly");
+			if (ext_format == 6 && (x[i+2] & 1))
+				printf("      Supports 22.2ch System H\n");
 		}
 	}
 }
@@ -1823,13 +1845,13 @@ static struct field *vcdb_fields[] = {
 
 static const char *speaker_map[] = {
 	"FL/FR - Front Left/Right",
-	"LFE - Low Frequency Effects",
+	"LFE1 - Low Frequency Effects 1",
 	"FC - Front Center",
 	"BL/BR - Back Left/Right",
 	"BC - Back Center",
-	"FLC/FRC - Front Left/Right of Center",
-	"RLC/RRC - Rear Left/Right of Center",
-	"FLW/FRW - Front Left/Right Wide",
+	"FLc/FRc - Front Left/Right of Center",
+	"RLC/RRC - Rear Left/Right of Center (Deprecated)",
+	"FLw/FRw - Front Left/Right Wide",
 	"TpFL/TpFR - Top Front Left/Right",
 	"TpC - Top Center",
 	"TpFC - Top Front Center",
@@ -1840,9 +1862,9 @@ static const char *speaker_map[] = {
 	"TpSiL/TpSiR - Top Side Left/Right",
 	"TpBL/TpBR - Top Back Left/Right",
 	"BtFC - Bottom Front Center",
-	"BtFL/BtBR - Bottom Front Left/Right",
-	"TpLS/TpRS - Top Left/Right Surround",
-	"LSd/RSd - Left/Right Surround Direct",
+	"BtFL/BtFR - Bottom Front Left/Right",
+	"TpLS/TpRS - Top Left/Right Surround (Deprecated for CTA-861)",
+	"LSd/RSd - Left/Right Surround Direct (HDMI only)",
 };
 
 static void cta_sadb(const unsigned char *x, unsigned int length)
@@ -1922,7 +1944,7 @@ static const char *speaker_location[] = {
 	"TpBC - Top Back Center",
 	"BtFC - Bottom Front Center",
 	"BtFL - Bottom Front Left",
-	"BtBR - Bottom Front Right",
+	"BtFR - Bottom Front Right",
 	"FLW - Front Left Wide",
 	"FRW - Front Right Wide",
 	"LS - Left Surround",
@@ -1978,6 +2000,8 @@ static void cta_colorimetry_block(const unsigned char *x, unsigned int length)
 		}
 		if (x[1] & 0x80)
 			printf("    DCI-P3\n");
+		if (x[1] & 0x40)
+			printf("    ICtCp\n");
 	}
 }
 
