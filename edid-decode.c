@@ -1165,6 +1165,11 @@ static void cta_audio_block(const unsigned char *x, unsigned int length)
 			       (x[i+2] & 0x01) ? " 16" : "");
 		} else if (format <= 8) {
 			printf("      Maximum bit rate: %d kb/s\n", x[i+2] * 8);
+		} else if (format == 10) {
+			if(x[i+2] & 1)
+				printf("      Supports JOC\n");
+			if(x[i+2] & 2)
+				printf("      Supports JOC with ACMOD28\n");
 		} else if (format == 14) {
 			printf("      Profile: %d\n", x[i+2] & 7);
 		} else if (ext_format == 11 && (x[i+2] & 1)) {
