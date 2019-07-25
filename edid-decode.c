@@ -1166,10 +1166,12 @@ static void cta_audio_block(const unsigned char *x, unsigned int length)
 		} else if (format <= 8) {
 			printf("      Maximum bit rate: %d kb/s\n", x[i+2] * 8);
 		} else if (format == 10) {
+			// As specified by the "Dolby Audio and Dolby Atmos over HDMI"
+			// specification (v1.0).
 			if(x[i+2] & 1)
-				printf("      Supports JOC\n");
+				printf("      Supports Joint Object Coding\n");
 			if(x[i+2] & 2)
-				printf("      Supports JOC with ACMOD28\n");
+				printf("      Supports Joint Object Coding with ACMOD28\n");
 		} else if (format == 14) {
 			printf("      Profile: %d\n", x[i+2] & 7);
 		} else if (ext_format == 11 && (x[i+2] & 1)) {
