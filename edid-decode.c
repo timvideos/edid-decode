@@ -1024,8 +1024,8 @@ static int detailed_block(const unsigned char *x, int in_extension)
 
 	if (!ha || !hbl || !va || !vbl) {
 		printf("Invalid Detailed Timings:\n"
-		       "Horizontal Active/Blanking %d/%d\n"
-		       "Vertical Active/Blanking %d/%d\n",
+		       "  Horizontal Active/Blanking %d/%d\n"
+		       "  Vertical Active/Blanking %d/%d\n",
 		       ha, hbl, va, vbl);
 		return 0;
 	}
