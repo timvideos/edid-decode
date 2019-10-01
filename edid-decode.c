@@ -1022,6 +1022,14 @@ static int detailed_block(const unsigned char *x, int in_extension)
 		break;
 	}
 
+	if (!ha || !hbl || !va || !vbl) {
+		printf("Invalid Detailed Timings:\n"
+		       "Horizontal Active/Blanking %d/%d\n"
+		       "Vertical Active/Blanking %d/%d\n",
+		       ha, hbl, va, vbl);
+		return 0;
+	}
+
 	pixclk_khz = (x[0] + (x[1] << 8)) * 10;
 	refresh = (pixclk_khz * 1000) / ((ha + hbl) * (va + vbl));
 	printf("Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
