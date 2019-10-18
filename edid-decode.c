@@ -84,10 +84,12 @@ static int seen_non_detailed_descriptor = 0;
 static int warning_excessive_dotclock_correction = 0;
 static int warning_zero_preferred_refresh = 0;
 static int nonconformant_hf_vsdb_position = 0;
+static int duplicate_scdb = 0;
 static int nonconformant_srgb_chromaticity = 0;
 static int nonconformant_cta861_640x480 = 0;
 static int nonconformant_hdmi_vsdb_tmds_rate = 0;
 static int nonconformant_hf_vsdb_tmds_rate = 0;
+static int nonconformant_hf_eeodb = 0;
 
 static int min_hor_freq_hz = 0xfffffff;
 static int max_hor_freq_hz = 0;
@@ -1726,33 +1728,39 @@ static const char *dsc_max_slices[] = {
 	"up to 16 slices and up to (400 MHz/Ksliceadjust) pixel clock per slice",
 };
 
-static void cta_hf_block(const unsigned char *x, unsigned int length)
+static void cta_hf_eeodb(const unsigned char *x, unsigned int length)
 {
-	unsigned rate = x[4] * 5;
+	printf("    EDID Extension Block Count: %u\n", x[0]);
+	if (length != 1 || x[0] == 0)
+		nonconformant_hf_eeodb = 1;
+}
 
-	printf(" (HDMI Forum)\n");
-	printf("    Version: %u\n", x[3]);
+static void cta_hf_scdb(const unsigned char *x, unsigned int length)
+{
+	unsigned rate = x[1] * 5;
+
+	printf("    Version: %u\n", x[0]);
 	if (rate) {
 		printf("    Maximum TMDS Character Rate: %uMHz\n", rate);
 		if ((rate && rate <= 340) || rate > 600)
 			nonconformant_hf_vsdb_tmds_rate = 1;
 	}
-	if (x[5] & 0x80)
+	if (x[2] & 0x80)
 		printf("    SCDC Present\n");
-	if (x[5] & 0x40)
+	if (x[2] & 0x40)
 		printf("    SCDC Read Request Capable\n");
-	if (x[5] & 0x10)
+	if (x[2] & 0x10)
 		printf("    Supports Color Content Bits Per Component Indication\n");
-	if (x[5] & 0x08)
+	if (x[2] & 0x08)
 		printf("    Supports scrambling for <= 340 Mcsc\n");
-	if (x[5] & 0x04)
+	if (x[2] & 0x04)
 		printf("    Supports 3D Independent View signaling\n");
-	if (x[5] & 0x02)
+	if (x[2] & 0x02)
 		printf("    Supports 3D Dual View signaling\n");
-	if (x[5] & 0x01)
+	if (x[2] & 0x01)
 		printf("    Supports 3D OSD Disparity signaling\n");
-	if (x[6] & 0xf0) {
-		unsigned max_frl_rate = x[6] >> 4;
+	if (x[3] & 0xf0) {
+		unsigned max_frl_rate = x[3] >> 4;
 
 		printf("    Max Fix Rate Link: ");
 		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
@@ -1764,58 +1772,60 @@ static void cta_hf_block(const unsigned char *x, unsigned int length)
 		else if (max_frl_rate >= 2 && rate < 600)
 			nonconformant_hf_vsdb_tmds_rate = 1;
 	}
-	if (x[6] & 0x04)
+	if (x[3] & 0x08)
+		printf("    Supports UHD VIC\n");
+	if (x[3] & 0x04)
 		printf("    Supports 16-bits/component Deep Color 4:2:0 Pixel Encoding\n");
-	if (x[6] & 0x02)
+	if (x[3] & 0x02)
 		printf("    Supports 12-bits/component Deep Color 4:2:0 Pixel Encoding\n");
-	if (x[6] & 0x01)
+	if (x[3] & 0x01)
 		printf("    Supports 10-bits/component Deep Color 4:2:0 Pixel Encoding\n");
 
 	if (length <= 7)
 		return;
 
-	if (x[7] & 0x20)
+	if (x[4] & 0x20)
 		printf("    Supports Mdelta\n");
-	if (x[7] & 0x10)
+	if (x[4] & 0x10)
 		printf("    Supports media rates below VRRmin (CinemaVRR)\n");
-	if (x[7] & 0x08)
+	if (x[4] & 0x08)
 		printf("    Supports negative Mvrr values\n");
-	if (x[7] & 0x04)
+	if (x[4] & 0x04)
 		printf("    Supports Fast Vactive\n");
-	if (x[7] & 0x02)
+	if (x[4] & 0x02)
 		printf("    Supports Auto Low-Latency Mode\n");
-	if (x[7] & 0x01)
+	if (x[4] & 0x01)
 		printf("    Supports a FAPA in blanking after first active video line\n");
 
 	if (length <= 8)
 		return;
 
-	printf("    VRRmin: %d\n", x[8] & 0x3f);
-	printf("    VRRmax: %d\n", (x[8] & 0xc0) << 2 | x[9]);
+	printf("    VRRmin: %d\n", x[5] & 0x3f);
+	printf("    VRRmax: %d\n", (x[5] & 0xc0) << 2 | x[6]);
 
 	if (length <= 10)
 		return;
 
-	if (x[10] & 0x80)
+	if (x[7] & 0x80)
 		printf("    Supports VESA DSC 1.2a compression\n");
-	if (x[10] & 0x40)
+	if (x[7] & 0x40)
 		printf("    Supports Compressed Video Transport for 4:2:0 Pixel Encoding\n");
-	if (x[10] & 0x08)
+	if (x[7] & 0x08)
 		printf("    Supports Compressed Video Transport at any valid 1/16th bit bpp\n");
-	if (x[10] & 0x04)
+	if (x[7] & 0x04)
 		printf("    Supports 16 bpc Compressed Video Transport\n");
-	if (x[10] & 0x02)
+	if (x[7] & 0x02)
 		printf("    Supports 12 bpc Compressed Video Transport\n");
-	if (x[10] & 0x01)
+	if (x[7] & 0x01)
 		printf("    Supports 10 bpc Compressed Video Transport\n");
-	if (x[11] & 0xf) {
-		unsigned max_slices = x[11] & 0xf;
+	if (x[8] & 0xf) {
+		unsigned max_slices = x[8] & 0xf;
 
 		if (max_slices < ARRAY_SIZE(dsc_max_slices))
 			printf("    Supports %s\n", dsc_max_slices[max_slices]);
 	}
-	if (x[11] & 0xf0) {
-		unsigned max_frl_rate = x[11] >> 4;
+	if (x[8] & 0xf0) {
+		unsigned max_frl_rate = x[8] >> 4;
 
 		printf("    DSC Max Fix Rate Link: ");
 		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
@@ -1823,9 +1833,14 @@ static void cta_hf_block(const unsigned char *x, unsigned int length)
 		else
 			printf("%s\n", max_frl_rates[max_frl_rate]);
 	}
-	if (x[12] & 0x3f)
+	if (x[9] & 0x3f)
 		printf("    Maximum number of bytes in a line of chunks: %u\n",
-		       1024 * (1 + (x[12] & 0x3f)));
+		       1024 * (1 + (x[9] & 0x3f)));
+}
+
+static void cta_hdr10plus(const unsigned char *x, unsigned int length)
+{
+	printf("    Application Version: %u\n", x[0]);
 }
 
 DEFINE_FIELD("YCbCr quantization", YCbCr_quantization, 7, 7,
@@ -2179,106 +2194,137 @@ static void cta_hdmi_audio_block(const unsigned char *x, unsigned int length)
 static void cta_block(const unsigned char *x)
 {
 	static int last_block_was_hdmi_vsdb;
+	static int have_hf_vsdb, have_hf_scdb;
+	static int first_block = 1;
 	unsigned int length = x[0] & 0x1f;
 	unsigned int oui;
 
 	switch ((x[0] & 0xe0) >> 5) {
 	case 0x01:
-		printf("  Audio data block\n");
+		printf("  Audio Data Block\n");
 		cta_audio_block(x + 1, length);
 		break;
 	case 0x02:
-		printf("  Video data block\n");
+		printf("  Video Data Block\n");
 		cta_video_block(x + 1, length);
 		break;
 	case 0x03:
-		/* yes really, endianness lols */
 		oui = (x[3] << 16) + (x[2] << 8) + x[1];
-		printf("  Vendor-specific data block, OUI %06x", oui);
+		printf("  Vendor-Specific Data Block, OUI %06x", oui);
 		if (oui == 0x000c03) {
 			cta_hdmi_block(x + 1, length);
 			last_block_was_hdmi_vsdb = 1;
+			first_block = 0;
 			return;
 		}
 		if (oui == 0xc45dd8) {
 			if (!last_block_was_hdmi_vsdb)
 				nonconformant_hf_vsdb_position = 1;
-			cta_hf_block(x + 1, length);
+			if (have_hf_scdb || have_hf_vsdb)
+				duplicate_scdb = 1;
+			printf(" (HDMI Forum)\n");
+			cta_hf_scdb(x + 4, length - 3);
+			have_hf_vsdb = 1;
 		} else {
 			printf("\n");
 		}
 		break;
 	case 0x04:
-		printf("  Speaker allocation data block\n");
+		printf("  Speaker Allocation Data Block\n");
 		cta_sadb(x + 1, length);
 		break;
 	case 0x05:
-		printf("  VESA DTC data block\n");
+		printf("  VESA DTC Data Block\n");
 		break;
 	case 0x07:
 		printf("  Extended tag: ");
 		switch (x[1]) {
 		case 0x00:
-			printf("Video capability data block\n");
+			printf("Video Capability Data Block\n");
 			cta_vcdb(x + 2, length - 1);
 			break;
 		case 0x01:
-			printf("Vendor-specific video data block\n");
+			oui = (x[4] << 16) + (x[3] << 8) + x[2];
+			printf("Vendor-Specific Video Data Block, OUI %06x", oui);
+			if (oui == 0x90848b) {
+				printf(" (HDR10+)\n");
+				cta_hdr10plus(x + 5, length - 4);
+			} else {
+				printf("\n");
+			}
 			break;
 		case 0x02:
-			printf("VESA video display device data block\n");
+			printf("VESA Video Display Device Data Block\n");
 			break;
 		case 0x03:
-			printf("VESA video timing block extension\n");
+			printf("VESA Video Timing Block Extension\n");
 			break;
 		case 0x04:
-			printf("Reserved for HDMI video data block\n");
+			printf("Reserved for HDMI Video Data Block\n");
 			break;
 		case 0x05:
-			printf("Colorimetry data block\n");
+			printf("Colorimetry Data Block\n");
 			cta_colorimetry_block(x + 2, length - 1);
 			break;
 		case 0x06:
-			printf("HDR static metadata data block\n");
+			printf("HDR Static Metadata Data Block\n");
 			cta_hdr_static_metadata_block(x + 2, length - 1);
 			break;
 		case 0x07:
-			printf("HDR dynamic metadata data block\n");
+			printf("HDR Dynamic Metadata Data Block\n");
 			cta_hdr_dyn_metadata_block(x + 2, length - 1);
 			break;
 		case 0x0d:
-			printf("Video format preference data block\n");
+			printf("Video Format Preference Data Block\n");
 			cta_vfpdb(x + 2, length - 1);
 			break;
 		case 0x0e:
-			printf("YCbCr 4:2:0 video data block\n");
+			printf("YCbCr 4:2:0 Video Data Block\n");
 			cta_y420vdb(x + 2, length - 1);
 			break;
 		case 0x0f:
-			printf("YCbCr 4:2:0 capability map data block\n");
+			printf("YCbCr 4:2:0 Capability Map Data Block\n");
 			cta_y420cmdb(x + 2, length - 1);
 			break;
 		case 0x10:
-			printf("Reserved for CTA miscellaneous audio fields\n");
+			printf("Reserved for CTA Miscellaneous Audio Fields\n");
 			break;
 		case 0x11:
-			printf("Vendor-specific audio data block\n");
+			printf("Vendor-Specific Audio Data Block\n");
 			break;
 		case 0x12:
-			printf("HDMI audio data block\n");
+			printf("HDMI Audio Data Block\n");
 			cta_hdmi_audio_block(x + 2, length - 1);
 			break;
 		case 0x13:
-			printf("Room configuration data block\n");
+			printf("Room Configuration Data Block\n");
 			cta_rcdb(x + 2, length - 1);
 			break;
 		case 0x14:
-			printf("Speaker location data block\n");
+			printf("Speaker Location Data Block\n");
 			cta_sldb(x + 2, length - 1);
 			break;
 		case 0x20:
-			printf("InfoFrame data block\n");
+			printf("InfoFrame Data Block\n");
 			cta_ifdb(x + 2, length - 1);
+			break;
+		case 0x78:
+			printf("HDMI Forum EDID Extension Override Data Block\n");
+			cta_hf_eeodb(x + 2, length - 1);
+			// This must be the first CTA block
+			if (!first_block)
+				nonconformant_hf_eeodb = 1;
+			break;
+		case 0x79:
+			printf("HDMI Forum Sink Capability Data Block\n");
+			if (!last_block_was_hdmi_vsdb)
+				nonconformant_hf_vsdb_position = 1;
+			if (have_hf_scdb || have_hf_vsdb)
+				duplicate_scdb = 1;
+			if (x[2] || x[3])
+				printf("  Non-zero SCDB reserved fields!\n");
+			cta_hf_scdb(x + 4, length - 3);
+			have_hf_scdb = 1;
 			break;
 		default:
 			if (x[1] >= 6 && x[1] <= 12)
@@ -2297,6 +2343,7 @@ static void cta_block(const unsigned char *x)
 		break;
 	}
 	}
+	first_block = 0;
 	last_block_was_hdmi_vsdb = 0;
 }
 
@@ -3212,8 +3259,10 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	if (claims_one_point_three) {
 		if (nonconformant_digital_display ||
 		    nonconformant_hf_vsdb_position ||
+		    duplicate_scdb ||
 		    nonconformant_hdmi_vsdb_tmds_rate ||
 		    nonconformant_hf_vsdb_tmds_rate ||
+		    nonconformant_hf_eeodb ||
 		    nonconformant_srgb_chromaticity ||
 		    nonconformant_cta861_640x480 ||
 		    !has_valid_string_termination ||
@@ -3233,11 +3282,15 @@ static int edid_from_file(const char *from_file, const char *to_file,
 			printf("\tRequired 640x480p60 timings are missing in the established timings\n"
 			       "\tand/or in the SVD list (VIC 1)\n");
 		if (nonconformant_hf_vsdb_position)
-			printf("\tHDMI Forum VSDB did not immediately follow the HDMI VSDB\n");
+			printf("\tHDMI Forum VSDB or SCDB did not immediately follow the HDMI VSDB\n");
+		if (duplicate_scdb)
+			printf("\tDuplicate HDMI Forum VSDB/SCDB\n");
 		if (nonconformant_hdmi_vsdb_tmds_rate)
 			printf("\tHDMI VSDB Max TMDS rate is > 340\n");
 		if (nonconformant_hf_vsdb_tmds_rate)
 			printf("\tHDMI Forum VSDB Max TMDS rate is > 0 and <= 340 or > 600\n");
+		if (nonconformant_hf_eeodb)
+			printf("\tHDMI Forum EDID Extension Override Data Block starts at a wrong offset or is too long or reports a 0 block count\n");
 		if (!has_name_descriptor)
 			printf("\tMissing name descriptor\n");
 		if (!has_preferred_timing)
