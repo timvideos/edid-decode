@@ -2362,15 +2362,9 @@ static int parse_cta(const unsigned char *x)
 			break;
 
 		if (version < 3) {
-			printf("%d 8-byte timing descriptors\n", (offset - 4) / 8);
+			printf("%d 8-byte timing descriptors\n\n", (offset - 4) / 8);
 			if (offset - 4 > 0)
 				/* do stuff */ ;
-		} else if (version == 3) {
-			int i;
-			printf("%d bytes of CTA data\n", offset - 4);
-			for (i = 4; i < offset; i += (x[i] & 0x1f) + 1) {
-				cta_block(x + i);
-			}
 		}
 
 		if (version >= 2) {    
@@ -2382,7 +2376,16 @@ static int parse_cta(const unsigned char *x)
 				printf("Supports YCbCr 4:4:4\n");
 			if (x[3] & 0x10)
 				printf("Supports YCbCr 4:2:2\n");
-			printf("%d native detailed modes\n", x[3] & 0x0f);
+			printf("%d native detailed modes\n\n", x[3] & 0x0f);
+		}
+		if (version == 3) {
+			int i;
+
+			printf("%d bytes of CTA data\n", offset - 4);
+			for (i = 4; i < offset; i += (x[i] & 0x1f) + 1) {
+				cta_block(x + i);
+			}
+			printf("\n");
 		}
 
 		for (detailed = x + offset; detailed + 18 < x + 127; detailed += 18)
@@ -2604,8 +2607,6 @@ static int parse_extension(const unsigned char *x)
 		   printf("Unknown extension block\n");
 		   break;
 	}
-
-	printf("\n");
 
 	return conformant_extension;
 }
@@ -3248,6 +3249,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	x = edid;
 	for (edid_lines /= 8; edid_lines > 1; edid_lines--) {
 		x += EDID_PAGE_SIZE;
+		printf("\n----------------\n");
 		nonconformant_extension += parse_extension(x);
 	}
 
