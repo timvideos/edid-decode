@@ -2451,7 +2451,7 @@ static int parse_cta(const unsigned char *x)
 	return ret;
 }
 
-static int parse_displayid_detailed_timing(const unsigned char *x)
+static void parse_displayid_detailed_timing(const unsigned char *x)
 {
 	int ha, hbl, hso, hspw;
 	int va, vbl, vso, vspw;
@@ -2490,19 +2490,19 @@ static int parse_displayid_detailed_timing(const unsigned char *x)
 	}
 	switch ((x[3] >> 5) & 0x3) {
 	case 0:
-		stereo = "";
+		stereo = ", no 3D stereo";
 		break;
 	case 1:
-		stereo = "stereo";
+		stereo = ", 3D stereo";
 		break;
 	case 2:
-		stereo = "user action";
+		stereo = ", 3D stereo depends on user action";
 		break;
 	case 3:
-		stereo = "reserved";
+		stereo = ", reserved";
 		break;
 	}
-	printf("Type 1 detailed timing: aspect: %s, %s %s\n", aspect, x[3] & 0x80 ? "Preferred " : "", stereo);
+	printf("  Aspect %s%s%s\n", aspect, x[3] & 0x80 ? ", preferred" : "", stereo);
 	pix_clock = x[0] + (x[1] << 8) + (x[2] << 16);
 	ha = x[4] | (x[5] << 8);
 	hbl = x[6] | (x[7] << 8);
@@ -2515,20 +2515,116 @@ static int parse_displayid_detailed_timing(const unsigned char *x)
 	vspw = x[18] | (x[19] << 8);
 	pvsync = ((x[17] >> 7) & 0x1 ) ? '+' : '-';
 
-	printf("Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
-	       "               %4d %4d %4d %4d\n"
-	       "               %4d %4d %4d %4d\n"
-	       "               %chsync %cvsync\n",
+	printf("  Detailed mode: Clock %.3f MHz, %d mm x %d mm\n"
+	       "                 %4d %4d %4d %4d\n"
+	       "                 %4d %4d %4d %4d\n"
+	       "                 %chsync %cvsync\n",
 	       (float)pix_clock/100.0, 0, 0,
 	       ha, ha + hso, ha + hso + hspw, ha + hbl,
 	       va, va + vso, va + vso + vspw, va + vbl,
 	       phsync, pvsync
 	      );
-	return 1;
 }
+
+static const struct {
+	int x, y, refresh, ratio_w, ratio_h;
+	int hor_freq_hz, pixclk_khz, rb, interlaced;
+} displayid_vesa_dmt[] = {
+	/* 0x03 bit 7 - 0 */
+	{640, 350, 85, 64, 35, 37900, 31500},
+	{640, 400, 85, 16, 10, 37900, 31500},
+	{720, 400, 85, 9, 5, 37900, 35500},
+	{640, 480, 60, 4, 3, 31469, 25175},
+	{640, 480, 72, 4, 3, 37900, 31500},
+	{640, 480, 75, 4, 3, 37500, 31500},
+	{640, 480, 85, 4, 3, 43300, 36000},
+	{800, 600, 56, 4, 3, 35200, 36000},
+	/* 0x04 bit 7 - 0 */
+	{800, 600, 60, 4, 3, 37900, 40000},
+	{800, 600, 72, 4, 3, 48100, 50000},
+	{800, 600, 75, 4, 3, 46900, 49500},
+	{800, 600, 85, 4, 3, 53700, 56250},
+	{800, 600, 120, 4, 3, 76302, 73250, 1},
+	{848, 480, 60, 16, 9, 31020, 33750},
+	{1024, 768, 43, 4, 3, 35522, 44900, 0, 1},
+	{1024, 768, 60, 4, 3, 48400, 65000},
+	/* 0x05 bit 7 - 0 */
+	{1024, 768, 70, 4, 3, 56500, 75000},
+	{1024, 768, 75, 4, 3, 60000, 78750},
+	{1024, 768, 85, 4, 3, 68700, 94500},
+	{1024, 768, 120, 4, 3, 97551, 115500, 1},
+	{1152, 864, 75, 4, 3, 67500, 108000},
+	{1280, 768, 60, 5, 3, 47400, 68250, 1},
+	{1280, 768, 60, 5, 3, 47800, 79500},
+	{1280, 768, 75, 5, 3, 60300, 102250},
+	/* 0x06 bit 7 - 0 */
+	{1280, 768, 85, 5, 3, 68600, 117500},
+	{1280, 768, 120, 5, 3, 97396, 140250, 1},
+	{1280, 800, 60, 16, 10, 49306, 710000, 1},
+	{1280, 800, 60, 16, 10, 49702, 83500},
+	{1280, 800, 75, 16, 10, 62795, 106500},
+	{1280, 800, 85, 16, 10, 71554, 122500},
+	{1280, 800, 120, 16, 10, 101563, 146250, 1},
+	{1280, 960, 60, 4, 3, 60000, 108000},
+	/* 0x07 bit 7 - 0 */
+	{1280, 960, 85, 4, 3, 85900, 148500},
+	{1280, 960, 120, 4, 3, 121875, 175500, 1},
+	{1280, 1024, 60, 5, 4, 64000, 108000},
+	{1280, 1024, 75, 5, 4, 80000, 135000},
+	{1280, 1024, 85, 5, 4, 91100, 157500},
+	{1280, 1024, 120, 5, 4, 130035, 187250, 1},
+	{1360, 768, 60, 85, 48, 47700, 85500},
+	{1360, 768, 120, 85, 48, 97533, 148250, 1},
+	/* 0x08 bit 7 - 0 */
+	{1400, 1050, 60, 4, 3, 64700, 101000, 1},
+	{1400, 1050, 60, 4, 3, 65300, 121750},
+	{1400, 1050, 75, 4, 3, 82300, 156000},
+	{1400, 1050, 85, 4, 3, 93900, 179500},
+	{1400, 1050, 120, 4, 3, 133333, 208000, 1},
+	{1440, 900, 60, 16, 10, 55500, 88750, 1},
+	{1440, 900, 60, 16, 10, 65300, 121750},
+	{1440, 900, 75, 16, 10, 82300, 156000},
+	/* 0x09 bit 7 - 0 */
+	{1440, 900, 85, 16, 10, 93900, 179500},
+	{1440, 900, 120, 16, 10, 114219, 182750, 1},
+	{1600, 1200, 60, 4, 3, 75000, 162000},
+	{1600, 1200, 65, 4, 3, 81300, 175500},
+	{1600, 1200, 70, 4, 3, 87500, 189000},
+	{1600, 1200, 75, 4, 3, 93800, 202500},
+	{1600, 1200, 85, 4, 3, 106300, 229500},
+	{1600, 1200, 120, 4, 3, 152415, 268250, 1},
+	/* 0x0a bit 7 - 0 */
+	{1680, 1050, 60, 16, 10, 64700, 119000, 1},
+	{1680, 1050, 60, 16, 10, 65300, 146250},
+	{1680, 1050, 75, 16, 10, 82300, 187000},
+	{1680, 1050, 85, 16, 10, 93900, 214750},
+	{1680, 1050, 120, 16, 10, 133424, 245500, 1},
+	{1792, 1344, 60, 4, 3, 83600, 204750},
+	{1792, 1344, 75, 4, 3, 106300, 261000},
+	{1792, 1344, 120, 4, 3, 170722, 333250, 1},
+	/* 0x0b bit 7 - 4 */
+	{1856, 1392, 60, 4, 3, 86300, 218250},
+	{1856, 1392, 75, 4, 3, 112500, 288000},
+	{1856, 1392, 120, 4, 3, 176835, 356500, 1},
+	{1920, 1200, 60, 16, 10, 74000, 154000, 1},
+	{1920, 1200, 60, 16, 10, 74600, 193250},
+	{1920, 1200, 75, 16, 10, 94000, 245250},
+	{1920, 1200, 85, 16, 10, 107200, 281250},
+	{1920, 1200, 120, 16, 10, 152404, 317000, 1},
+	/* 0x0c bit 7 - 4 */
+	{1920, 1440, 60, 4, 3, 90000, 234000},
+	{1920, 1440, 75, 4, 3, 112500, 297000},
+	{1920, 1440, 120, 4, 3, 182933, 380500, 1},
+	{2560, 1600, 60, 16, 10, 98713, 268500, 1},
+	{2560, 1600, 60, 16, 10, 99458, 348500},
+	{2560, 1600, 75, 16, 10, 125354, 443250},
+	{2560, 1600, 85, 16, 10, 142887, 505250},
+	{2560, 1600, 120, 16, 10, 203217, 552750, 1},
+};
 
 static int parse_displayid(const unsigned char *x)
 {
+	const unsigned char *orig = x;
 	int version = x[1];
 	int length = x[2];
 	int ext_count = x[4];
@@ -2536,13 +2632,8 @@ static int parse_displayid(const unsigned char *x)
 
 	cur_block = "DisplayID";
 
-	printf("Length %d, version %d, extension count %d\n", length, version, ext_count);
-
-	/* DisplayID length field is number of following bytes
-	 * but checksum is calculated over the entire structure
-	 * (excluding DisplayID-in-EDID magic byte)
-	 */
-	has_valid_displayid_checksum = do_checksum(x+1, length + 5);
+	printf("Length %d, version %u.%u, extension count %d\n",
+	       length, version >> 4, version & 0xf, ext_count);
 
 	int offset = 5;
 	while (length > 0) {
@@ -2553,58 +2644,77 @@ static int parse_displayid(const unsigned char *x)
 			break;
 		switch (tag) {
 		case 0:
-			printf("Product ID block\n");
+			printf("Product ID Block\n");
 			break;
 		case 1:
-			printf("Display Parameters block\n");
+			printf("Display Parameters Block\n");
 			break;
 		case 2:
-			printf("Color characteristics block\n");
+			printf("Color Characteristics Block\n");
 			break;
 		case 3: {
+			printf("Type 1 Detailed Timings Block\n");
 			for (i = 0; i < len / 20; i++) {
 				parse_displayid_detailed_timing(&x[offset + 3 + (i * 20)]);
 			}
 			break;
 		}
 		case 4:
-			printf("Type 2 detailed timing\n");
+			printf("Type 2 Detailed Timings Block\n");
 			break;
 		case 5:
-			printf("Type 3 short timing\n");
+			printf("Type 3 Short Timings Block\n");
 			break;
 		case 6:
-			printf("Type 4 DMT timing\n");
+			printf("Type 4 DMT Timings Block\n");
 			break;
 		case 7:
-			printf("VESA DMT timing block\n");
+			printf("Type 1 VESA DMT Timings Block\n");
+			for (i = 0; i < min(len, 10) * 8; i++) {
+				if (x[offset + 3 + i / 8] & (1 << (i % 8))) {
+					printf("  %dx%d%s@%dHz %s%u:%u HorFreq: %d Hz Clock: %.3f MHz\n",
+					       displayid_vesa_dmt[i].x,
+					       displayid_vesa_dmt[i].y,
+					       displayid_vesa_dmt[i].interlaced ? "i" : "",
+					       displayid_vesa_dmt[i].refresh,
+					       displayid_vesa_dmt[i].rb ? "RB " : "",
+					       displayid_vesa_dmt[i].ratio_w, displayid_vesa_dmt[i].ratio_h,
+					       displayid_vesa_dmt[i].hor_freq_hz,
+					       displayid_vesa_dmt[i].pixclk_khz / 1000.0);
+					min_vert_freq_hz = min(min_vert_freq_hz, displayid_vesa_dmt[i].refresh);
+					max_vert_freq_hz = max(max_vert_freq_hz, displayid_vesa_dmt[i].refresh);
+					min_hor_freq_hz = min(min_hor_freq_hz, displayid_vesa_dmt[i].hor_freq_hz);
+					max_hor_freq_hz = max(max_hor_freq_hz, displayid_vesa_dmt[i].hor_freq_hz);
+					max_pixclk_khz = max(max_pixclk_khz, displayid_vesa_dmt[i].pixclk_khz);
+				}
+			}
 			break;
 		case 8:
-			printf("CTA timing block\n");
+			printf("CTA Timings Block\n");
 			break;
 		case 9:
-			printf("Video timing range\n");
+			printf("Video Timing Range Block\n");
 			break;
 		case 0xa:
-			printf("Product serial number\n");
+			printf("Product Serial Number Block\n");
 			break;
 		case 0xb:
-			printf("GP ASCII string\n");
+			printf("GP ASCII String Block\n");
 			break;
 		case 0xc:
-			printf("Display device data\n");
+			printf("Display Device Data Block\n");
 			break;
 		case 0xd:
-			printf("Interface power sequencing\n");
+			printf("Interface Power Sequencing Block\n");
 			break;
 		case 0xe:
-			printf("Transfer characterisitics\n");
+			printf("Transfer Characteristics Block\n");
 			break;
 		case 0xf:
-			printf("Display interface\n");
+			printf("Display Interface Block\n");
 			break;
 		case 0x10:
-			printf("Stereo display interface\n");
+			printf("Stereo Display Interface Block\n");
 			break;
 		case 0x12: {
 			int capabilities = x[offset + 3];
@@ -2614,21 +2724,48 @@ static int parse_displayid(const unsigned char *x)
 			int tile_h_location = (x[offset + 5] >> 4) | (((x[offset + 6] >> 2) & 0x3) << 4);
 			int tile_width = x[offset + 7] | (x[offset + 8] << 8);
 			int tile_height = x[offset + 9] | (x[offset + 10] << 8);
-			printf("tiled display block: capabilities 0x%08x\n", capabilities);
-			printf("num horizontal tiles %d, num vertical tiles %d\n", num_h_tile + 1, num_v_tile + 1);
-			printf("tile location (%d, %d)\n", tile_h_location, tile_v_location);
-			printf("tile dimensions (%d, %d)\n", tile_width + 1, tile_height + 1);
+			int pix_mult = x[offset + 11];
+
+			printf("Tiled Display Topology Block\n");
+			printf("  Capabilities: 0x%08x\n", capabilities);
+			printf("  Num horizontal tiles: %d Num vertical tiles: %d\n", num_h_tile + 1, num_v_tile + 1);
+			printf("  Tile location: %d, %d\n", tile_h_location, tile_v_location);
+			printf("  Tile resolution: %dx%d\n", tile_width + 1, tile_height + 1);
+			if (capabilities & 0x40) {
+				if (pix_mult) {
+					printf("  Top bevel size: %d pixels\n",
+					       pix_mult * x[offset + 12] / 10);
+					printf("  Bottom bevel size: %d pixels\n",
+					       pix_mult * x[offset + 13] / 10);
+					printf("  Right bevel size: %d pixels\n",
+					       pix_mult * x[offset + 14] / 10);
+					printf("  Left bevel size: %d pixels\n",
+					       pix_mult * x[offset + 15] / 10);
+				} else {
+					warn("No bevel information, but the pixel multiplier is non-zero\n");
+				}
+				printf("  Tile resolution: %dx%d\n", tile_width + 1, tile_height + 1);
+			} else if (pix_mult) {
+				warn("No bevel information, but the pixel multiplier is non-zero\n");
+			}
 			break;
 		}
 		default:
-			printf("Unknown displayid data block 0x%x\n", tag);
+			printf("Unknown DisplayID Data Block 0x%x\n", tag);
 			break;
 		}
 		length -= len + 3;
 		offset += len + 3;
 	}
-	return 1;
+
+	/* DisplayID length field is number of following bytes
+	 * but checksum is calculated over the entire structure
+	 * (excluding DisplayID-in-EDID magic byte)
+	 */
+	has_valid_displayid_checksum = do_checksum(orig+1, orig[2] + 5);
+	return 0;
 }
+
 /* generic extension code */
 
 static void extension_version(const unsigned char *x)
@@ -2638,27 +2775,27 @@ static void extension_version(const unsigned char *x)
 
 static int parse_extension(const unsigned char *x)
 {
-	int conformant_extension;
+	int conformant_extension = 0;
+
 	printf("\n");
 
 	switch(x[0]) {
 	case 0x02:
-		printf("CTA extension block\n");
+		printf("CTA Extension Block\n");
 		extension_version(x);
 		conformant_extension = parse_cta(x);
 		break;
-	case 0x10: printf("VTB extension block\n"); break;
-	case 0x40: printf("DI extension block\n"); break;
-	case 0x50: printf("LS extension block\n"); break;
-	case 0x60: printf("DPVL extension block\n"); break;
-	case 0x70: printf("DisplayID extension block\n");
-		   extension_version(x);
-		   parse_displayid(x);
+	case 0x10: printf("VTB Extension Block\n"); break;
+	case 0x40: printf("DI Extension Block\n"); break;
+	case 0x50: printf("LS Extension Block\n"); break;
+	case 0x60: printf("DPVL Extension Block\n"); break;
+	case 0x70: printf("DisplayID Extension Block\n");
+		   conformant_extension = parse_displayid(x);
 		   break;
 	case 0xF0: printf("Block map\n"); break;
-	case 0xFF: printf("Manufacturer-specific extension block\n");
+	case 0xFF: printf("Manufacturer-specific Extension Block\n");
 	default:
-		   printf("Unknown extension block\n");
+		   printf("Unknown Extension Block\n");
 		   break;
 	}
 
