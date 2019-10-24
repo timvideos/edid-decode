@@ -1762,7 +1762,7 @@ static void cta_hf_scdb(const unsigned char *x, unsigned int length)
 	if (x[3] & 0xf0) {
 		unsigned max_frl_rate = x[3] >> 4;
 
-		printf("    Max Fix Rate Link: ");
+		printf("    Max Fixed Rate Link: ");
 		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
 			printf("Reserved\n");
 		else
@@ -1800,8 +1800,8 @@ static void cta_hf_scdb(const unsigned char *x, unsigned int length)
 	if (length <= 8)
 		return;
 
-	printf("    VRRmin: %d\n", x[5] & 0x3f);
-	printf("    VRRmax: %d\n", (x[5] & 0xc0) << 2 | x[6]);
+	printf("    VRRmin: %d Hz\n", x[8] & 0x3f);
+	printf("    VRRmax: %d Hz\n", (x[8] & 0xc0) << 2 | x[9]);
 
 	if (length <= 10)
 		return;
@@ -1827,7 +1827,7 @@ static void cta_hf_scdb(const unsigned char *x, unsigned int length)
 	if (x[8] & 0xf0) {
 		unsigned max_frl_rate = x[8] >> 4;
 
-		printf("    DSC Max Fix Rate Link: ");
+		printf("    DSC Max Fixed Rate Link: ");
 		if (max_frl_rate >= ARRAY_SIZE(max_frl_rates))
 			printf("Reserved\n");
 		else
@@ -3258,6 +3258,8 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		return 0;
 	}
 
+	printf("\n----------------\n\n");
+
 	if (claims_one_point_three) {
 		if (nonconformant_digital_display ||
 		    nonconformant_hf_vsdb_position ||
@@ -3362,7 +3364,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	    empty_string ||
 	    trailing_space) {
 		conformant = 0;
-		printf("EDID block does not conform at all!\n");
+		printf("EDID block does not conform:\n");
 		if (nonconformant_extension)
 			printf("\tHas %d nonconformant extension block(s)\n",
 			       nonconformant_extension);
@@ -3417,6 +3419,8 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		printf("Warning: HDMI VIC Codes must have their CTA-861 VIC equivalents in the VSB\n");
 
 	free(edid);
+	if (conformant)
+		printf("No issues found\n");
 	return conformant ? 0 : -2;
 }
 
