@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <time.h>
 #include <ctype.h>
 #include <math.h>
@@ -105,6 +106,7 @@ static unsigned supported_hdmi_vic_codes = 0;
 static unsigned supported_hdmi_vic_vsb_codes = 0;
 
 static int conformant = 1;
+static unsigned warnings;
 
 enum output_format {
 	OUT_FMT_DEFAULT,
@@ -166,6 +168,30 @@ struct field {
 	struct value *values;
 	int n_values;
 };
+
+static const char *cur_block;
+static char *s_warn;
+static unsigned int s_warn_len = 1;
+
+static void warn(const char *fmt, ...)
+{
+	unsigned int length;
+	char buf[256];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsprintf(buf, fmt, ap);
+	va_end(ap);
+	warnings++;
+	length = strlen(buf);
+	s_warn = realloc(s_warn, s_warn_len + length + strlen(cur_block) + 2);
+	strcpy(s_warn + s_warn_len - 1, cur_block);
+	s_warn_len += strlen(cur_block);
+	strcpy(s_warn + s_warn_len - 1, ": ");
+	s_warn_len += 2;
+	strcpy(s_warn + s_warn_len - 1, buf);
+	s_warn_len += length;
+}
 
 #define DEFINE_FIELD(n, var, s, e, ...)				\
 static struct value var##_values[] =  {				\
@@ -462,7 +488,7 @@ static int detailed_cvt_descriptor(const unsigned char *x, int first)
 }
 
 /* extract a string from a detailed subblock, checking for termination */
-static char *extract_string(const unsigned char *x, int *valid, int len)
+static char *extract_string(const char *name, const unsigned char *x, int *valid, int len)
 {
 	static char ret[EDID_PAGE_SIZE];
 	int i, seen_newline = 0;
@@ -478,8 +504,10 @@ static char *extract_string(const unsigned char *x, int *valid, int len)
 				seen_newline = 1;
 				if (!i) {
 					empty_string = 1;
+					warn("%s: empty string\n", name);
 					*valid = 0;
 				} else if (ret[i - 1] == 0x20) {
+					warn("%s: one or more trailing spaces\n", name);
 					trailing_space = 1;
 					*valid = 0;
 				}
@@ -487,11 +515,13 @@ static char *extract_string(const unsigned char *x, int *valid, int len)
 				ret[i] = x[i];
 			} else {
 				has_valid_string_termination = 0;
+				warn("%s: non-printable character\n", name);
 				*valid = 0;
 				return ret;
 			}
 		} else if (x[i] != 0x20) {
 			has_valid_string_termination = 0;
+			warn("%s: non-space after newline\n", name);
 			*valid = 0;
 			return ret;
 		}
@@ -499,6 +529,7 @@ static char *extract_string(const unsigned char *x, int *valid, int len)
 	/* Does the string end with a space? */
 	if (!seen_newline && ret[len - 1] == 0x20) {
 		trailing_space = 1;
+		warn("%s: one or more trailing spaces\n", name);
 		*valid = 0;
 	}
 
@@ -797,7 +828,7 @@ static int detailed_block(const unsigned char *x, int in_extension)
 		case 0xFC:
 			has_name_descriptor = 1;
 			printf("Monitor name: %s\n",
-			       extract_string(x + 5, &has_valid_name_descriptor, 13));
+			       extract_string("Display Product Name", x + 5, &has_valid_name_descriptor, 13));
 			return 1;
 		case 0xFD: {
 			int h_max_offset = 0, h_min_offset = 0;
@@ -956,12 +987,12 @@ static int detailed_block(const unsigned char *x, int in_extension)
 			 */
 			has_ascii_string = 1;
 			printf("ASCII string: %s\n",
-			       extract_string(x + 5, &has_valid_ascii_string, 13));
+			       extract_string("Alphanumeric Data String", x + 5, &has_valid_ascii_string, 13));
 			return 1;
 		case 0xFF:
 			has_serial_string = 1;
 			printf("Serial number: %s\n",
-			       extract_string(x + 5, &has_valid_serial_string, 13));
+			       extract_string("Display Product Serial Number", x + 5, &has_valid_serial_string, 13));
 			return 1;
 		default:
 			printf("Unknown monitor description type %d\n", x[3]);
@@ -2201,10 +2232,12 @@ static void cta_block(const unsigned char *x)
 
 	switch ((x[0] & 0xe0) >> 5) {
 	case 0x01:
+		cur_block = "Audio Data Block";
 		printf("  Audio Data Block\n");
 		cta_audio_block(x + 1, length);
 		break;
 	case 0x02:
+		cur_block = "Video Data Block";
 		printf("  Video Data Block\n");
 		cta_video_block(x + 1, length);
 		break;
@@ -2212,12 +2245,14 @@ static void cta_block(const unsigned char *x)
 		oui = (x[3] << 16) + (x[2] << 8) + x[1];
 		printf("  Vendor-Specific Data Block, OUI %06x", oui);
 		if (oui == 0x000c03) {
+			cur_block = "Vendor-Specific Data Block (HDMI)";
 			cta_hdmi_block(x + 1, length);
 			last_block_was_hdmi_vsdb = 1;
 			first_block = 0;
 			return;
 		}
 		if (oui == 0xc45dd8) {
+			cur_block = "Vendor-Specific Data Block (HDMI Forum)";
 			if (!last_block_was_hdmi_vsdb)
 				nonconformant_hf_vsdb_position = 1;
 			if (have_hf_scdb || have_hf_vsdb)
@@ -2230,6 +2265,7 @@ static void cta_block(const unsigned char *x)
 		}
 		break;
 	case 0x04:
+		cur_block = "Speaker Allocation Data Block";
 		printf("  Speaker Allocation Data Block\n");
 		cta_sadb(x + 1, length);
 		break;
@@ -2240,6 +2276,7 @@ static void cta_block(const unsigned char *x)
 		printf("  Extended tag: ");
 		switch (x[1]) {
 		case 0x00:
+			cur_block = "Video Capability Data Block";
 			printf("Video Capability Data Block\n");
 			cta_vcdb(x + 2, length - 1);
 			break;
@@ -2247,6 +2284,7 @@ static void cta_block(const unsigned char *x)
 			oui = (x[4] << 16) + (x[3] << 8) + x[2];
 			printf("Vendor-Specific Video Data Block, OUI %06x", oui);
 			if (oui == 0x90848b) {
+				cur_block = "Vendor-Specific Video Data Block (HDR10+)";
 				printf(" (HDR10+)\n");
 				cta_hdr10plus(x + 5, length - 4);
 			} else {
@@ -2263,26 +2301,32 @@ static void cta_block(const unsigned char *x)
 			printf("Reserved for HDMI Video Data Block\n");
 			break;
 		case 0x05:
+			cur_block = "Colorimetry Data Block";
 			printf("Colorimetry Data Block\n");
 			cta_colorimetry_block(x + 2, length - 1);
 			break;
 		case 0x06:
+			cur_block = "HDR Static Metadata Data Block";
 			printf("HDR Static Metadata Data Block\n");
 			cta_hdr_static_metadata_block(x + 2, length - 1);
 			break;
 		case 0x07:
+			cur_block = "HDR Dynamic Metadata Data Block";
 			printf("HDR Dynamic Metadata Data Block\n");
 			cta_hdr_dyn_metadata_block(x + 2, length - 1);
 			break;
 		case 0x0d:
+			cur_block = "Video Format Preference Data Block";
 			printf("Video Format Preference Data Block\n");
 			cta_vfpdb(x + 2, length - 1);
 			break;
 		case 0x0e:
+			cur_block = "YCbCr 4:2:0 Video Data Block";
 			printf("YCbCr 4:2:0 Video Data Block\n");
 			cta_y420vdb(x + 2, length - 1);
 			break;
 		case 0x0f:
+			cur_block = "YCbCr 4:2:0 Capability Map Data Block";
 			printf("YCbCr 4:2:0 Capability Map Data Block\n");
 			cta_y420cmdb(x + 2, length - 1);
 			break;
@@ -2293,14 +2337,17 @@ static void cta_block(const unsigned char *x)
 			printf("Vendor-Specific Audio Data Block\n");
 			break;
 		case 0x12:
+			cur_block = "HDMI Audio Data Block";
 			printf("HDMI Audio Data Block\n");
 			cta_hdmi_audio_block(x + 2, length - 1);
 			break;
 		case 0x13:
+			cur_block = "Room Configuration Data Block";
 			printf("Room Configuration Data Block\n");
 			cta_rcdb(x + 2, length - 1);
 			break;
 		case 0x14:
+			cur_block = "Speaker Location Data Block";
 			printf("Speaker Location Data Block\n");
 			cta_sldb(x + 2, length - 1);
 			break;
@@ -2309,6 +2356,7 @@ static void cta_block(const unsigned char *x)
 			cta_ifdb(x + 2, length - 1);
 			break;
 		case 0x78:
+			cur_block = "HDMI Forum EDID Extension Override Data Block";
 			printf("HDMI Forum EDID Extension Override Data Block\n");
 			cta_hf_eeodb(x + 2, length - 1);
 			// This must be the first CTA block
@@ -2316,6 +2364,7 @@ static void cta_block(const unsigned char *x)
 				nonconformant_hf_eeodb = 1;
 			break;
 		case 0x79:
+			cur_block = "HDMI Forum Sink Capability Data Block";
 			printf("HDMI Forum Sink Capability Data Block\n");
 			if (!last_block_was_hdmi_vsdb)
 				nonconformant_hf_vsdb_position = 1;
@@ -2353,6 +2402,8 @@ static int parse_cta(const unsigned char *x)
 	int version = x[1];
 	int offset = x[2];
 	const unsigned char *detailed;
+
+	cur_block = "CTA-861";
 
 	if (version >= 1) do {
 		if (version == 1 && x[3] != 0)
@@ -2482,6 +2533,9 @@ static int parse_displayid(const unsigned char *x)
 	int length = x[2];
 	int ext_count = x[4];
 	int i;
+
+	cur_block = "DisplayID";
+
 	printf("Length %d, version %d, extension count %d\n", length, version, ext_count);
 
 	/* DisplayID length field is number of following bytes
@@ -2715,6 +2769,7 @@ static unsigned char *extract_edid(int fd)
 				out[out_index++] = strtol(buf, NULL, 16);
 				c += 2;
 			}
+			cur_block = "CTA-861";
 		}
 
 		free(ret);
@@ -3005,6 +3060,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		return -1;
 	}
 
+	cur_block = "EDID Structure Version & Revision";
 	printf("EDID version: %hd.%hd\n", edid[0x12], edid[0x13]);
 	if (edid[0x12] == 1) {
 		if (edid[0x13] > 4) {
@@ -3025,6 +3081,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		claims_one_point_oh = 1;
 	}
 
+	cur_block = "Vendor & Product Identification";
 	printf("Manufacturer: %s Model %x Serial Number %u\n",
 	       manufacturer_name(edid + 0x08),
 	       (unsigned short)(edid[0x0A] + (edid[0x0B] << 8)),
@@ -3050,9 +3107,12 @@ static int edid_from_file(const char *from_file, const char *to_file,
 			}
 		}
 	}
+		if (!has_valid_year)
+			warn("Invalid year\n");
 
 	/* display section */
 
+	cur_block = "Basic Display Parameters & Features";
 	if (edid[0x14] & 0x80) {
 		int conformance_mask;
 		analog = 0;
@@ -3192,6 +3252,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 			printf("Supports GTF timings within operating range\n");
 	}
 
+	cur_block = "Color Characteristics";
 	printf("Display x,y Chromaticity:\n");
 	col_x = (edid[0x1b] << 2) | (edid[0x19] >> 6);
 	col_y = (edid[0x1c] << 2) | ((edid[0x19] >> 4) & 3);
@@ -3210,6 +3271,7 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	printf("  White: 0.%04u, 0.%04u\n",
 	       (col_x * 10000) / 1024, (col_y * 10000) / 1024);
 
+	cur_block = "Established Timings";
 	printf("Established timings supported:\n");
 	for (i = 0; i < 17; i++) {
 		if (edid[0x23 + i / 8] & (1 << (7 - i % 8))) {
@@ -3229,11 +3291,13 @@ static int edid_from_file(const char *from_file, const char *to_file,
 	}
 	has_640x480p60_est_timing = edid[0x23] & 0x20;
 
+	cur_block = "Standard Timings";
 	printf("Standard timings supported:\n");
 	for (i = 0; i < 8; i++)
 		print_standard_timing(edid[0x26 + i * 2], edid[0x26 + i * 2 + 1]);
 
 	/* detailed timings */
+	cur_block = "Detailed Timings";
 	has_valid_detailed_blocks = detailed_block(edid + 0x36, 0);
 	if (has_preferred_timing && !did_detailed_timing)
 		has_preferred_timing = 0; /* not really accurate... */
@@ -3419,6 +3483,8 @@ static int edid_from_file(const char *from_file, const char *to_file,
 		printf("Warning: HDMI VIC Codes must have their CTA-861 VIC equivalents in the VSB\n");
 
 	free(edid);
+	if (s_warn)
+		printf("%s", s_warn);
 	if (conformant)
 		printf("No issues found\n");
 	return conformant ? 0 : -2;
